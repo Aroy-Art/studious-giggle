@@ -691,8 +691,6 @@ function startApp(QUIZ) {
   });
 
   // ---------- boot ----------
-  const counts = QUIZ.TRACKS.map(([t, name]) => [QUESTIONS.filter(q => q.track === t).length, name]).filter(([n]) => n);
-  $('#sub').textContent += ' ' + counts.map(([n, name]) => n + ' ' + name).join(', ') + (counts.length ? '.' : '');
   QUIZ.TRACKS.forEach(([t]) => { if (!QUESTIONS.some(q => q.track === t)) $('#note-' + t).hidden = true; });
   if (QUIZ.problems.length) {
     const w = document.createElement('div');

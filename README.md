@@ -2,13 +2,15 @@
 
 SQL + TypeScript quiz that runs in the browser.
 
+🌐 **Live:** https://aroy-art.github.io/studious-giggle/
+
 ## ▶ Run
 
 ```sh
 live-server --port=:5500 --browser=false
 ```
 
-Open **http://localhost:5500/Select%20%26%20Return.html**
+Open **http://localhost:5500**
 
 > ⚠ Opening the file directly from disk won't work. You need a web server.
 

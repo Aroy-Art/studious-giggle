@@ -147,3 +147,6 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Local backup of the original single-file quiz
+Select & Return.backup.html

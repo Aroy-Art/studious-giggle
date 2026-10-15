@@ -1,0 +1,58 @@
+[
+  {
+    "type": "sql",
+    "title": "Pricey books",
+    "level": "Easy",
+    "prompt": [
+      "List the <code>title</code> and <code>price</code> of every book that costs more than 15.00.",
+      "Show the most expensive first, and break ties by title A to Z."
+    ],
+    "hint": "WHERE filters rows. ORDER BY takes several columns, and each one gets its own ASC or DESC.",
+    "solution": [
+      "SELECT title, price",
+      "FROM books",
+      "WHERE price > 15",
+      "ORDER BY price DESC, title"
+    ]
+  },
+  {
+    "type": "ts",
+    "title": "Top scorers",
+    "level": "Easy",
+    "prompt": [
+      "Return the names of players whose <code>score</code> is at least <code>minScore</code>.",
+      "Highest score first. Players with the same score are ordered by name A to Z. Do not modify the input array."
+    ],
+    "hint": "filter, then sort. Array.prototype.sort changes the array it is called on, so sort the result of filter, not the original.",
+    "starter": [
+      "interface Player {",
+      "  name: string;",
+      "  score: number;",
+      "}",
+      "",
+      "function topScorers(players: Player[], minScore: number): string[] {",
+      "  // your code here",
+      "  return [];",
+      "}"
+    ],
+    "solution": [
+      "interface Player {",
+      "  name: string;",
+      "  score: number;",
+      "}",
+      "",
+      "function topScorers(players: Player[], minScore: number): string[] {",
+      "  return players",
+      "    .filter(p => p.score >= minScore)",
+      "    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))",
+      "    .map(p => p.name);",
+      "}"
+    ],
+    "tests": [
+      { "label": "mixed scores", "call": "fn([{name:'Ana',score:50},{name:'Bo',score:70},{name:'Cy',score:70}], 50)", "expected": "['Bo','Cy','Ana']" },
+      { "label": "empty list", "call": "fn([], 10)", "expected": "[]", "hidden": true },
+      { "label": "a score equal to the cut-off is included", "call": "fn([{name:'Mo',score:9},{name:'Al',score:9}], 9)", "expected": "['Al','Mo']", "hidden": true },
+      { "label": "input array is left unchanged", "call": "(() => { const p = [{name:'B',score:1},{name:'A',score:2}]; const before = JSON.stringify(p); fn(p, 0); return JSON.stringify(p) === before; })()", "expected": "true", "hidden": true }
+    ]
+  }
+]

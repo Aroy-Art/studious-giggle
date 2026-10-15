@@ -1,0 +1,125 @@
+{
+  "authors": {
+    "columns": [
+      { "name": "id", "type": "INT" },
+      { "name": "name", "type": "STRING" },
+      { "name": "country", "type": "STRING" }
+    ],
+    "rows": [
+      [1, "Ines Calder", "UK"],
+      [2, "Tomás Vidal", "Spain"],
+      [3, "Hana Okafor", "Nigeria"],
+      [4, "Piotr Wren", "Poland"],
+      [5, "Mei Lindqvist", "Sweden"],
+      [6, "Omar Haddad", "Egypt"],
+      [7, "Dara Quill", "UK"]
+    ]
+  },
+  "books": {
+    "columns": [
+      { "name": "id", "type": "INT" },
+      { "name": "title", "type": "STRING" },
+      { "name": "author_id", "type": "INT" },
+      { "name": "genre", "type": "STRING" },
+      { "name": "price", "type": "NUMBER" },
+      { "name": "published_year", "type": "INT" },
+      { "name": "stock", "type": "INT" }
+    ],
+    "rows": [
+      [1, "The Salt Road", 1, "Fiction", 14.5, 2004, 12],
+      [2, "Glass Harbour", 1, "Fiction", 18, 2011, 5],
+      [3, "Night Ferry", 1, "Mystery", 12.99, 1998, 0],
+      [4, "La Casa Azul", 2, "Fiction", 16.25, 2016, 8],
+      [5, "Rain Archive", 2, "Mystery", 13.75, 2019, 14],
+      [6, "Zero Hour Atlas", 3, "Science", 24, 2020, 6],
+      [7, "Kiln", 3, "Fiction", 11.5, 2008, 20],
+      [8, "The Orchard Code", 3, "Science", 29.95, 2022, 3],
+      [9, "Winter Ledger", 4, "History", 21, 1995, 4],
+      [10, "Iron Cartographers", 4, "History", 26.5, 2013, 7],
+      [11, "Fjord Notes", 5, "Travel", 19.9, 2017, 9],
+      [12, "Cold Light", 5, "Mystery", 9.99, 2001, 15],
+      [13, "Salt & Sand", 6, "History", 17.75, 2009, 11],
+      [14, "The Quiet Engine", 6, "Science", 22.4, 2015, 0],
+      [15, "Paper Weather", 7, "Fiction", 15, 2021, 10],
+      [16, "Lantern Hours", 7, "Travel", 20.5, 2018, 6],
+      [17, "Blue Telegraph", 7, "Mystery", 14, 2012, 13],
+      [18, "Moss Atlas", 5, "Travel", 27, 2023, 2]
+    ]
+  },
+  "customers": {
+    "columns": [
+      { "name": "id", "type": "INT" },
+      { "name": "name", "type": "STRING" },
+      { "name": "city", "type": "STRING" },
+      { "name": "joined", "type": "STRING" }
+    ],
+    "rows": [
+      [1, "Alma Reyes", "Lisbon", "2023-02-11"],
+      [2, "Ben Okoro", "Berlin", "2023-06-30"],
+      [3, "Chloe Dubois", "Paris", "2024-01-15"],
+      [4, "Dev Patel", "Berlin", "2024-03-02"],
+      [5, "Elsa Nyberg", "Stockholm", "2024-05-19"],
+      [6, "Farid Aziz", "Paris", "2025-01-08"],
+      [7, "Greta Voss", "Berlin", "2025-04-21"],
+      [8, "Hugo Marsh", "Lisbon", "2025-09-03"]
+    ]
+  },
+  "orders": {
+    "columns": [
+      { "name": "id", "type": "INT" },
+      { "name": "customer_id", "type": "INT" },
+      { "name": "order_date", "type": "STRING" },
+      { "name": "status", "type": "STRING" }
+    ],
+    "rows": [
+      [1, 1, "2025-01-12", "completed"],
+      [2, 2, "2025-01-20", "completed"],
+      [3, 1, "2025-02-03", "completed"],
+      [4, 3, "2025-02-14", "cancelled"],
+      [5, 4, "2025-02-27", "completed"],
+      [6, 5, "2025-03-05", "completed"],
+      [7, 2, "2025-03-18", "completed"],
+      [8, 7, "2025-03-29", "pending"],
+      [9, 3, "2025-04-02", "completed"],
+      [10, 1, "2025-04-16", "completed"],
+      [11, 4, "2025-05-09", "completed"],
+      [12, 5, "2025-05-21", "cancelled"],
+      [13, 3, "2025-06-11", "completed"],
+      [14, 2, "2025-06-25", "completed"]
+    ]
+  },
+  "order_items": {
+    "columns": [
+      { "name": "order_id", "type": "INT" },
+      { "name": "book_id", "type": "INT" },
+      { "name": "qty", "type": "INT" }
+    ],
+    "rows": [
+      [1, 1, 2],
+      [1, 7, 1],
+      [2, 6, 1],
+      [2, 11, 2],
+      [3, 1, 1],
+      [3, 15, 1],
+      [4, 8, 1],
+      [5, 2, 1],
+      [5, 16, 1],
+      [6, 9, 1],
+      [6, 13, 1],
+      [7, 7, 3],
+      [7, 12, 2],
+      [8, 10, 1],
+      [9, 4, 2],
+      [9, 17, 1],
+      [10, 7, 1],
+      [10, 5, 1],
+      [11, 11, 1],
+      [11, 15, 2],
+      [12, 14, 1],
+      [13, 1, 2],
+      [13, 16, 1],
+      [14, 7, 2],
+      [14, 6, 1]
+    ]
+  }
+}

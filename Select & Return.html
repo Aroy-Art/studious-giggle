@@ -1,0 +1,44 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>
+<title>Select &amp; Return</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<div class="page-loading" id="page-loading" role="status"><span class="spinner" aria-hidden="true"></span><span>Loading…</span></div>
+
+<div class="app">
+  <header class="top">
+    <div>
+      <h1>Select &amp; Return</h1>
+      <p class="sub" id="sub">Write the query or the function that returns the right data.</p>
+    </div>
+    <div class="progress" id="progress"></div>
+  </header>
+  <div class="layout">
+    <nav class="nav" id="nav" aria-label="Questions"></nav>
+    <main class="panel" id="panel" aria-live="off"></main>
+  </div>
+  <footer class="foot">
+    <div class="foot-notes">
+      <section class="foot-note" id="note-sql">
+        <h3><span class="foot-badge">SQL</span>Runs on AlaSQL</h3>
+        <p>A few things differ from PostgreSQL or SQLite: only single <code>SELECT</code> statements are accepted, and a column alias cannot be reused inside <code>HAVING</code> (repeat the expression). Column names in your result do not matter, only their order and values.</p>
+      </section>
+      <section class="foot-note" id="note-ts">
+        <h3><span class="foot-badge">TS</span>Compiled with Babel</h3>
+        <p>Types are removed but not checked, so a type error will not stop your function from running. Each function runs against hidden tests, with a time limit for infinite loops.</p>
+      </section>
+    </div>
+    <div class="foot-bar">
+      <p><span class="foot-dot" aria-hidden="true"></span>Progress and drafts are saved in this browser only.</p>
+      <button class="btn quiet foot-reset" id="reset-all" type="button">Reset progress</button>
+    </div>
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/alasql@4.17.3/dist/alasql.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="app.js"></script>
+
+</body></html>

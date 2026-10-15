@@ -68,6 +68,13 @@ function buildQuiz(QUESTION_LIST, schemaJson) {
       q.tests = raw.tests.map(t => ({
         label: t.label || t.call, visible: !t.hidden, call: String(t.call), expected: String(t.expected),
       }));
+      // Optional example calls shown on the question page instead of the visible tests.
+      // Each is a string ("fn(1)") or { call, returns }.
+      if (raw.examples != null) {
+        q.examples = [].concat(raw.examples).filter(Boolean).map(e => (typeof e === 'string'
+          ? { call: e, returns: null }
+          : { call: String(e.call || ''), returns: e.returns != null ? String(e.returns) : null }));
+      }
     }
     QUESTIONS.push(q);
   });
@@ -193,7 +200,7 @@ function startApp(QUIZ) {
   const QUESTIONS = QUIZ.QUESTIONS;
   const byId = id => QUESTIONS.find(q => q.id === id);
   // Pages that are not questions. They live in the sidebar above the question lists.
-  const PAGES = { welcome: { title: 'Welcome', icon: '★' }, tutorial: { title: 'How it works', icon: '?' } };
+  const PAGES = { welcome: { title: 'Welcome', icon: '◇' }, tutorial: { title: 'How it works', icon: '?' } };
   const $ = (s, r) => (r || document).querySelector(s);
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -224,20 +231,27 @@ function startApp(QUIZ) {
     save(); renderNav(); renderProgress();
   }
 
-  // ---------- header + nav ----------
+  // ---------- rail: progress + nav ----------
+  const pad = n => String(n).padStart(2, '0');
   function renderProgress() {
+    const total = QUESTIONS.length;
     const solved = QUESTIONS.filter(q => state.status[q.id] === 'solved').length;
     const viewed = QUESTIONS.filter(q => state.status[q.id] === 'revealed').length;
-    const segs = QUESTIONS.map(q => '<span class="seg ' + (state.status[q.id] || '') + '"></span>').join('');
+    const pct = total ? Math.round((solved / total) * 100) : 0;
+    const left = total - solved - viewed;
     $('#progress').innerHTML =
-      '<div class="count"><strong>' + solved + ' of ' + QUESTIONS.length + '</strong> solved' + (viewed ? ' · ' + viewed + ' with the solution viewed' : '') + '</div>' +
-      '<div class="segs" role="img" aria-label="' + solved + ' of ' + QUESTIONS.length + ' questions solved">' + segs + '</div>';
+      '<div class="ring" style="--p:' + pct + '" role="img" aria-label="' + solved + ' of ' + total + ' questions solved"><span>' + pct + '<small>%</small></span></div>' +
+      '<div class="progress-text"><strong>' + solved + ' / ' + total + '</strong><span>solved' + (viewed ? ' · ' + viewed + ' viewed' : '') + (left ? ' · ' + left + ' to go' : '') + '</span></div>';
   }
 
   function renderNav() {
+    const item = (id, lead, title, st, level) =>
+      '<button type="button" class="nav-item' + (st ? ' is-' + st : '') + '" data-id="' + id + '" aria-current="' + (id === state.current) + '">' +
+      '<span class="n" aria-hidden="true">' + lead + '</span><span class="t">' + title + '</span>' +
+      '<span class="lv">' + (level ? '<span class="tag">' + esc(level) + '</span>' : '') + '</span>' +
+      '<span class="st" aria-hidden="true"></span></button>';
     const start = '<section><h3><span>Start</span></h3><div class="nav-list">' +
-      Object.entries(PAGES).map(([id, pg]) => '<button type="button" class="nav-item" data-id="' + id + '" aria-current="' + (id === state.current) + '"><span class="n" aria-hidden="true">' + pg.icon + '</span><span class="t">' + pg.title + '</span><span></span></button>').join('') +
-      '</div></section>';
+      Object.entries(PAGES).map(([id, pg]) => item(id, pg.icon, pg.title, '', '')).join('') + '</div></section>';
     $('#nav').innerHTML = start + QUIZ.TRACKS.map(([track, name]) => {
       const list = QUESTIONS.filter(q => q.track === track);
       if (!list.length) return '';
@@ -245,8 +259,8 @@ function startApp(QUIZ) {
       return '<section><h3><span>' + name + '</span><span>' + done + '/' + list.length + '</span></h3><div class="nav-list">' +
         list.map((q, i) => {
           const st = state.status[q.id];
-          const tag = st === 'solved' ? '<span class="tag solved">Solved</span>' : st === 'revealed' ? '<span class="tag revealed">Viewed</span>' : '<span class="tag">' + q.level + '</span>';
-          return '<button type="button" class="nav-item" data-id="' + q.id + '" aria-current="' + (q.id === state.current) + '"><span class="n">' + (i + 1) + '</span><span class="t">' + esc(q.title) + '</span>' + tag + '</button>';
+          const label = esc(q.title) + (st === 'solved' ? '<span class="sr-only"> (solved)</span>' : st === 'revealed' ? '<span class="sr-only"> (solution viewed)</span>' : '');
+          return item(q.id, pad(i + 1), label, st, q.level);
         }).join('') + '</div></section>';
     }).join('');
   }
@@ -289,99 +303,156 @@ function startApp(QUIZ) {
     if (!ed || !out) return;
     // A trailing newline needs a character after it, or the last empty line collapses.
     out.innerHTML = highlight(ed.value, byId(state.current).track) + (ed.value.endsWith('\n') ? ' ' : '');
+    const lines = ed.value.split('\n').length;
+    const gutter = $('#gutter-lines');
+    if (gutter && gutter.childElementCount !== lines) {
+      gutter.innerHTML = Array.from({ length: lines }, (_, i) => '<span>' + (i + 1) + '</span>').join('');
+    }
+    const lc = $('#line-count');
+    if (lc) lc.textContent = plural(lines, 'line');
     syncScroll();
+    syncCursor();
   }
   function syncScroll() {
-    const ed = $('#editor'), pre = $('.editor-hl');
-    if (ed && pre) { pre.scrollTop = ed.scrollTop; pre.scrollLeft = ed.scrollLeft; }
+    const ed = $('#editor'), pre = $('.editor-hl'), gutter = $('.gutter');
+    if (!ed) return;
+    if (pre) { pre.scrollTop = ed.scrollTop; pre.scrollLeft = ed.scrollLeft; }
+    if (gutter) gutter.scrollTop = ed.scrollTop;
+    syncCursor();
+  }
+  // Status bar position plus the highlighted current line, like a code editor.
+  function syncCursor() {
+    const ed = $('#editor'), bar = $('#active-line'), pos = $('#cursor-pos');
+    if (!ed || !bar) return;
+    const before = ed.value.slice(0, ed.selectionStart);
+    const line = before.split('\n').length;
+    const col = before.length - before.lastIndexOf('\n');
+    if (pos) pos.textContent = 'Ln ' + line + ', Col ' + col;
+    const cs = getComputedStyle(ed);
+    const lh = parseFloat(cs.lineHeight), padTop = parseFloat(cs.paddingTop);
+    bar.style.height = lh + 'px';
+    bar.style.transform = 'translateY(' + (padTop + (line - 1) * lh - ed.scrollTop) + 'px)';
+    const g = $('#gutter-lines');
+    if (g) {
+      const prev = g.querySelector('.cur');
+      if (prev) prev.classList.remove('cur');
+      if (g.children[line - 1]) g.children[line - 1].classList.add('cur');
+    }
   }
 
-  // ---------- panel ----------
+  // ---------- question view: brief on the left, workbench on the right ----------
   function panelHTML(q) {
     const isSql = q.track === 'sql';
     const list = QUESTIONS.filter(x => x.track === q.track);
     const num = list.indexOf(q) + 1;
     const idx = QUESTIONS.indexOf(q);
     const prev = QUESTIONS[idx - 1], next = QUESTIONS[idx + 1];
-    let html = '';
-    html += '<div><div class="eyebrow"><span>' + (isSql ? 'SQL' : 'TypeScript') + ' · ' + num + ' of ' + list.length + '</span><span class="tag">' + q.level + '</span></div>';
-    html += '<h2 id="q-title" tabindex="-1">' + esc(q.title) + '</h2></div>';
-    html += '<div class="prompt">' + q.prompt + '</div>';
+    const st = state.status[q.id];
+
+    let brief = '<header class="q-head"><div class="eyebrow"><span class="track">' + (isSql ? 'SQL' : 'TS') + '</span><span>' + pad(num) + ' / ' + pad(list.length) + '</span>' +
+      '<span class="tag">' + esc(q.level) + '</span>' +
+      (st === 'solved' ? '<span class="tag solved">Solved</span>' : st === 'revealed' ? '<span class="tag revealed">Viewed</span>' : '') + '</div>' +
+      '<h2 id="q-title" tabindex="-1">' + esc(q.title) + '</h2></header>';
+    brief += '<div class="prompt">' + q.prompt + '</div>';
 
     if (isSql) {
-      const tables = Object.keys(QUIZ.SCHEMA);
-      if (tables.length) html += '<div class="section"><div class="label"><span>Tables</span><span class="aside">Same data for every SQL question</span></div>' +
-        '<div class="chips" role="group" aria-label="Tables">' + tables.map(t => '<button type="button" class="chip" data-table="' + t + '" aria-pressed="' + (t === ui.table) + '">' + t + '</button>').join('') + '</div>' +
-        '<div id="schema">' + schemaTableHTML(ui.table) + '</div></div>';
       const exp = expectedFor(q);
       if (exp.ok) {
-        html += '<div class="section"><div class="label"><span>Target</span></div><p style="margin:0">' + plural(exp.cols.length, 'column') + ' (<code>' + exp.cols.map(esc).join('</code>, <code>') + '</code>) and ' + plural(exp.rows.length, 'row') + '.</p>' +
+        brief += '<div class="section"><div class="label"><span>Target</span></div><p class="target">' + plural(exp.cols.length, 'column') + ' (<code>' + exp.cols.map(esc).join('</code>, <code>') + '</code>) and ' + plural(exp.rows.length, 'row') + '.</p>' +
           '<details class="expected"><summary>Show the expected result</summary>' + tableHTML(exp.cols, exp.rows) + '</details></div>';
       }
+      const tables = Object.keys(QUIZ.SCHEMA);
+      if (tables.length) brief += '<div class="section"><div class="label"><span>Tables</span><span class="aside">Same data for every SQL question</span></div>' +
+        '<div class="chips" role="group" aria-label="Tables">' + tables.map(t => '<button type="button" class="chip" data-table="' + t + '" aria-pressed="' + (t === ui.table) + '">' + t + '</button>').join('') + '</div>' +
+        '<div id="schema">' + schemaTableHTML(ui.table) + '</div></div>';
     } else {
-      html += '<div class="section"><div class="label"><span>Function</span><span class="aside">Name it <code>' + q.fnName + '</code></span></div></div>';
+      const hidden = q.tests.filter(t => !t.visible).length;
+      brief += '<div class="section"><div class="label"><span>Function</span></div><p class="fn-sig">Define <code>' + esc(q.fnName) + '</code>. It runs against ' + plural(q.tests.length, 'test') + (hidden ? ', ' + hidden + ' of them hidden' : '') + '.</p></div>';
+      // Example calls, taken from the visible tests that call the function directly.
+      // Example calls: the question's own "examples" if it has them, otherwise its visible tests.
+      const examples = q.examples || q.tests
+        .filter(t => t.visible && /^\s*fn\(/.test(t.call))
+        .map(t => ({ call: t.call, returns: t.expected }));
+      if (examples.length) {
+        const src = examples.map(e => e.call.replace(/^\s*fn\(/, q.fnName + '(') + (e.returns != null ? '\n// → ' + e.returns : '')).join('\n\n');
+        brief += '<div class="section"><div class="label"><span>Example</span><span class="aside">' + (examples.length === 1 ? 'Called like this' : 'Called like these') + '</span></div>' +
+          '<pre class="example"><code>' + highlight(src, 'ts') + '</code></pre></div>';
+      }
     }
 
-    const rows = isSql ? 9 : Math.max(12, q.starter.split('\n').length + 5);
-    html += '<div class="section"><div class="label"><span>' + (isSql ? 'Your query' : 'solution.ts') + '</span></div>' +
-      '<div class="editor-wrap"><pre class="editor-hl" aria-hidden="true"><code id="editor-hl"></code></pre>' +
-      '<textarea id="editor" class="editor" rows="' + rows + '" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="' + (isSql ? 'SQL query' : 'TypeScript solution') + '"></textarea></div>';
-    html += '<div class="actions">' +
-      (isSql
-        ? '<button type="button" class="btn" data-action="run">Run query</button><button type="button" class="btn primary" data-action="submit">Submit answer</button>'
-        : '<button type="button" class="btn primary" data-action="tests">Run tests</button>') +
-      '<span class="spacer"></span>' +
-      (q.hint ? '<button type="button" class="btn quiet" data-action="hint">' + (ui.hint[q.id] ? 'Hide hint' : 'Hint') + '</button>' : '') +
-      '<button type="button" class="btn quiet' + (ui.armed[q.id] ? ' armed' : '') + '" data-action="reveal">' + (ui.reveal[q.id] ? 'Hide solution' : ui.armed[q.id] ? 'Click again to show' : 'Show solution') + '</button>' +
-      '<button type="button" class="btn quiet" data-action="reset">Reset</button></div>';
-    html += '<div class="keys"><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Enter</kbd> ' + (isSql ? 'runs the query' : 'runs the tests') + ' · <kbd>Tab</kbd> indents, <kbd>Esc</kbd> then <kbd>Tab</kbd> leaves the editor</div></div>';
-
-    if (ui.armed[q.id] && !ui.reveal[q.id]) html += '<div class="note"><strong>Heads up.</strong> Viewing the solution marks this question as viewed instead of solved.</div>';
-    if (ui.hint[q.id]) html += '<div class="note"><strong>Hint.</strong> ' + esc(q.hint) + '</div>';
+    if (ui.armed[q.id] && !ui.reveal[q.id]) brief += '<div class="note"><strong>Heads up.</strong> Viewing the solution marks this question as viewed instead of solved.</div>';
+    if (ui.hint[q.id]) brief += '<div class="note hint"><strong>Hint.</strong> ' + esc(q.hint) + '</div>';
     if (ui.reveal[q.id]) {
-      html += '<div class="section"><div class="sol-head"><div class="label">Reference solution</div><button type="button" class="btn" data-action="load-solution">Load into editor</button></div><pre><code>' + highlight(q.solution, q.track) + '</code></pre></div>';
+      brief += '<div class="section"><div class="sol-head"><div class="label">Reference solution</div><button type="button" class="btn" data-action="load-solution">Load into editor</button></div><pre><code>' + highlight(q.solution, q.track) + '</code></pre></div>';
     }
-
-    html += '<div class="out" id="out" role="status" aria-live="polite">' + (ui.outputs[q.id] || '') + '</div>';
-    html += '<div class="pager"><button type="button" class="btn" data-action="prev">← ' + (prev ? esc(prev.title) : 'How it works') + '</button>' +
+    brief += '<div class="pager"><button type="button" class="btn" data-action="prev">← ' + (prev ? esc(prev.title) : 'How it works') + '</button>' +
       '<button type="button" class="btn" data-action="next"' + (next ? '' : ' disabled') + '>' + (next ? esc(next.title) : 'Next') + ' →</button></div>';
-    return html;
+
+    const rows = isSql ? 11 : Math.max(13, q.starter.split('\n').length + 4);
+    const runKey = '<span class="k">⌘↵</span>';
+    let work = '<div class="win"><div class="win-bar"><span class="win-tab">' + (isSql ? 'query.sql' : 'solution.ts') + '</span><span class="spacer"></span>' +
+      (q.hint ? '<button type="button" class="btn tool' + (ui.hint[q.id] ? ' on' : '') + '" data-action="hint">' + (ui.hint[q.id] ? 'Hide hint' : 'Hint') + '</button>' : '') +
+      '<button type="button" class="btn tool' + (ui.armed[q.id] ? ' armed' : '') + (ui.reveal[q.id] ? ' on' : '') + '" data-action="reveal">' + (ui.reveal[q.id] ? 'Hide solution' : ui.armed[q.id] ? 'Click again to show' : 'Solution') + '</button>' +
+      '<button type="button" class="btn tool" data-action="reset">Reset</button></div>' +
+      '<div class="editor-wrap"><div class="gutter" aria-hidden="true"><div id="gutter-lines"></div></div>' +
+      '<div class="code"><div class="active-line" id="active-line" aria-hidden="true"></div><pre class="editor-hl" aria-hidden="true"><code id="editor-hl"></code></pre>' +
+      '<textarea id="editor" class="editor" rows="' + rows + '" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="' + (isSql ? 'SQL query' : 'TypeScript solution') + '"></textarea></div></div>' +
+      '<div class="statusbar" aria-hidden="true"><span id="cursor-pos">Ln 1, Col 1</span><span id="line-count"></span><span class="spacer"></span><span>Spaces: 2</span><span>UTF-8</span><span>' + (isSql ? 'SQL' : 'TypeScript') + '</span></div>' +
+      '<div class="win-foot">' +
+      (isSql
+        ? '<button type="button" class="btn" data-action="run">Run' + runKey + '</button><button type="button" class="btn primary" data-action="submit">Submit answer</button>'
+        : '<button type="button" class="btn primary" data-action="tests">Run tests' + runKey + '</button>') +
+      '<span class="keys"><kbd>Tab</kbd> indents · <kbd>Esc</kbd> <kbd>Tab</kbd> leaves</span></div></div>';
+    work += '<div class="console"><div class="console-head">Output</div><div class="out" id="out" role="status" aria-live="polite" data-empty="' +
+      (isSql ? 'Run your query to see its result here.' : 'Run the tests to see the results here.') + '">' + (ui.outputs[q.id] || '') + '</div></div>';
+
+    return '<div class="q"><section class="q-brief">' + brief + '</section><section class="q-work" aria-label="Editor">' + work + '</section></div>';
   }
 
   // ---------- welcome + tutorial pages ----------
   const firstOpen = list => list.find(q => !state.status[q.id]) || list[0];
 
   function welcomeHTML() {
-    const solved = QUESTIONS.filter(q => state.status[q.id] === 'solved').length;
-    const started = solved > 0 || Object.keys(state.status).length > 0 || Object.keys(state.drafts).length > 0;
+    const started = Object.keys(state.status).length > 0 || Object.keys(state.drafts).length > 0;
     const last = byId(state.last);
-    let html = '<div><div class="eyebrow"><span>Welcome</span></div>' +
-      '<h2 id="q-title" tabindex="-1">Return the right data</h2></div>' +
-      '<div class="prompt"><p>Each question asks for a specific result. Write a SQL query or a TypeScript function that produces it, run it right here in the browser, and get told straight away whether it is right.</p>' +
-      '<p>Nothing to install and no account. Your progress and drafts stay in this browser.</p></div>';
+    const firstQ = QUESTIONS[0];
+    const demo = "SELECT title, price\nFROM books\nWHERE price > 15\nORDER BY price DESC;";
+
+    let html = '<div class="welcome"><section class="hero"><div class="hero-copy">' +
+      '<h2 id="q-title" tabindex="-1">Write it. Run it. <em>Return the right data.</em></h2>' +
+      '<div class="actions">' +
+      (started && last
+        ? '<button type="button" class="btn primary" data-go="' + last.id + '">Continue: ' + esc(last.title) + ' →</button>'
+        : firstQ ? '<button type="button" class="btn primary" data-go="' + firstQ.id + '">Start the first question →</button>' : '') +
+      '<button type="button" class="btn" data-go="tutorial">How it works</button></div></div>' +
+      '<div class="hero-demo" aria-hidden="true"><div class="win"><div class="win-bar"><span class="win-tab">query.sql</span></div>' +
+      '<pre><code>' + highlight(demo, 'sql') + '<span class="caret"></span></code></pre>' +
+      '<div class="demo-result">✓ Correct · matches the expected result</div></div></div></section>';
 
     html += '<div class="cards">' + QUIZ.TRACKS.map(([track, name]) => {
       const list = QUESTIONS.filter(q => q.track === track);
       if (!list.length) return '';
       const done = list.filter(q => state.status[q.id] === 'solved').length;
+      const pct = Math.round((done / list.length) * 100);
       const levels = [...new Set(list.map(q => q.level))].join(' · ');
-      const target = firstOpen(list);
       const blurb = track === 'sql'
         ? 'Query a small bookshop database: authors, books, customers and orders.'
-        : 'Write small functions that are checked by visible and hidden tests.';
-      return '<div class="card"><div class="card-head"><h3>' + name + '</h3><span class="tag">' + plural(list.length, 'question') + '</span></div>' +
-        '<p>' + blurb + '</p><p class="meta">' + esc(levels) + ' · ' + done + ' of ' + list.length + ' solved</p>' +
-        '<button type="button" class="btn' + (track === QUIZ.TRACKS[0][0] ? ' primary' : '') + '" data-go="' + target.id + '">' + (done ? 'Continue ' : 'Start ') + name + ' →</button></div>';
+        : 'Write small functions, checked by visible and hidden tests.';
+      return '<div class="card card-box"><span class="card-num" aria-hidden="true">' + pad(list.length) + '</span>' +
+        '<div class="eyebrow"><span class="track">' + (track === 'sql' ? 'SQL' : 'TS') + '</span><span>' + plural(list.length, 'question') + '</span></div>' +
+        '<h3>' + name + '</h3><p>' + blurb + '</p>' +
+        '<div class="bar" role="img" aria-label="' + done + ' of ' + list.length + ' solved"><i style="--p:' + pct + '"></i></div>' +
+        '<p class="meta">' + done + ' of ' + list.length + ' solved · ' + esc(levels) + '</p>' +
+        '<button type="button" class="btn" data-go="' + firstOpen(list).id + '">' + (done ? 'Continue ' : 'Start ') + name + ' →</button></div>';
     }).join('') + '</div>';
 
-    html += '<div class="actions">' +
-      (started && last ? '<button type="button" class="btn primary" data-go="' + last.id + '">Continue: ' + esc(last.title) + '</button>' : '') +
-      '<button type="button" class="btn" data-go="tutorial">New here? See how it works</button></div>';
+    html += '<p class="credits">A quiz made by <strong>Lucian</strong>, <strong>Fu.F</strong> &amp; <strong>Lexi</strong></p>';
+    html += '</div>';
     return html;
   }
 
   function tutorialHTML() {
-    const step = (n, title, body) => '<li class="step"><span class="step-n" aria-hidden="true">' + n + '</span><div><h3>' + title + '</h3>' + body + '</div></li>';
+    const step = (n, title, body) => '<li class="step"><span class="step-n" aria-hidden="true">' + pad(n) + '</span><div><h3>' + title + '</h3>' + body + '</div></li>';
     const code = (src, track) => '<pre><code>' + highlight(src, track) + '</code></pre>';
     const sqlExample = QUIZ.SCHEMA.authors
       ? "SELECT name, country\nFROM authors\nWHERE country = 'UK'\nORDER BY name"
@@ -389,40 +460,40 @@ function startApp(QUIZ) {
     const tsExample = 'function double(n: number): number {\n  return n * 2;\n}\n';
     const firstQ = QUESTIONS[0];
 
-    let html = '<div><div class="eyebrow"><span>Tutorial</span></div><h2 id="q-title" tabindex="-1">How it works</h2></div>' +
-      '<div class="prompt"><p>A two-minute tour. Every question works the same way: read what it wants, write an answer, check it.</p></div><ol class="steps">';
+    let html = '<div class="tut"><header class="tut-head"><div class="eyebrow"><span class="track">TUTORIAL</span><span>About two minutes</span></div>' +
+      '<h2 id="q-title" tabindex="-1">How it works</h2>' +
+      '<p class="lede">Every question works the same way: read what it wants, write an answer, check it.</p></header><ol class="steps">';
 
     html += step(1, 'Pick a question',
-      '<p>The sidebar lists every question, grouped into SQL and TypeScript. The tag shows its level, and turns into <span class="tag solved">Solved</span> once you get it right, or <span class="tag revealed">Viewed</span> if you looked at the solution first.</p>');
+      '<p>The sidebar lists every question, grouped into SQL and TypeScript. The dot next to each one turns <strong style="color:var(--ok)">green</strong> when you solve it, or <strong style="color:var(--warn)">amber</strong> if you looked at the solution first.</p>');
 
     html += step(2, 'SQL: read, query, submit',
-      '<p>Every SQL question uses the same tables. Click a table name to look at its data. The <strong>Target</strong> line tells you how many columns and rows the answer has, and you can peek at the expected result.</p>' +
+      '<p>Every SQL question uses the same tables. Click a table name to look at its data. <strong>Target</strong> tells you how many columns and rows the answer has, and you can peek at the expected result.</p>' +
       '<p>Try it with this example query:</p>' + code(sqlExample, 'sql') +
       '<div class="actions"><button type="button" class="btn" data-action="tut-run">Run this example</button></div>' +
       '<div class="out" id="tut-out" role="status" aria-live="polite"></div>' +
-      '<p><strong>Run query</strong> only shows your result. <strong>Submit answer</strong> compares it with the expected result. Column names do not matter, but column order, values and (when the question asks for a sort) row order do. Numbers are compared to 2 decimals.</p>');
+      '<p><strong>Run</strong> only shows your result. <strong>Submit answer</strong> compares it with the expected result. Column names don\'t matter, but column order, values and (when the question asks for a sort) row order do. Numbers are compared to 2 decimals.</p>');
 
     html += step(3, 'TypeScript: write the function, run the tests',
       '<p>Each TypeScript question names the function to write, and the editor starts with its signature. For example:</p>' + code(tsExample, 'ts') +
-      '<p><strong>Run tests</strong> calls your function with several inputs. Some tests show their input and expected output; hidden tests only say pass or fail, so handle the edge cases the question mentions.</p>' +
+      '<p><strong>Run tests</strong> calls your function with several inputs. Some tests show their input and expected output; hidden tests only say pass or fail.</p>' +
       '<ul class="tests">' +
         '<li class="test"><span class="pill pass">Pass</span><div><div class="what">doubles a positive number</div><dl><dt>call</dt><dd>fn(4)</dd></dl></div></li>' +
         '<li class="test"><span class="pill fail">Fail</span><div><div class="what">doubles a negative number</div><dl><dt>call</dt><dd>fn(-3)</dd><dt>expected</dt><dd>-6</dd><dt>received</dt><dd>6</dd></dl></div></li>' +
         '<li class="test"><span class="pill pass">Pass</span><div><div class="what">zero <span class="tag-hidden">· hidden test</span></div></div></li>' +
-      '</ul>' +
-      '<p class="meta">Types are stripped, not checked, so a type error will not stop your code from running.</p>');
+      '</ul>');
 
     html += step(4, 'Stuck?',
-      '<p><strong>Hint</strong> gives a nudge without the answer. <strong>Show solution</strong> needs a second click to confirm, and marks the question as Viewed instead of Solved. <strong>Reset</strong> puts the starter code back.</p>');
+      '<p><strong>Hint</strong> gives a nudge without the answer. <strong>Solution</strong> needs a second click to confirm, and marks the question as viewed instead of solved. <strong>Reset</strong> puts the starter code back.</p>');
 
     html += step(5, 'Keyboard',
-      '<p><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Enter</kbd> runs the query or the tests. <kbd>Tab</kbd> indents inside the editor; press <kbd>Esc</kbd> then <kbd>Tab</kbd> to move on to the next control.</p>');
+      '<p><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Enter</kbd> runs the query or the tests. <kbd>Tab</kbd> indents inside the editor; press <kbd>Esc</kbd> then <kbd>Tab</kbd> to move on.</p>');
 
     html += step(6, 'Your progress',
-      '<p>Solved questions and everything you type are saved in this browser automatically. <strong>Reset progress</strong> at the bottom of the page clears it all.</p>');
+      '<p>Solved questions and everything you type are saved in this browser automatically. <strong>Reset progress</strong> at the bottom of the sidebar clears it all.</p>');
 
     html += '</ol><div class="pager"><button type="button" class="btn" data-go="welcome">← Welcome</button>' +
-      (firstQ ? '<button type="button" class="btn primary" data-go="' + firstQ.id + '">Start: ' + esc(firstQ.title) + ' →</button>' : '') + '</div>';
+      (firstQ ? '<button type="button" class="btn primary" data-go="' + firstQ.id + '">Start: ' + esc(firstQ.title) + ' →</button>' : '') + '</div></div>';
     return html;
   }
 
@@ -438,11 +509,14 @@ function startApp(QUIZ) {
 
   function renderPanel(focusTitle) {
     const panel = $('#panel');
+    // Play the entrance animation on navigation only, not when a hint or solution toggles.
+    panel.classList.toggle('enter', !!focusTitle || !panel.dataset.ready);
+    panel.dataset.ready = '1';
     if (PAGES[state.current]) {
       panel.innerHTML = state.current === 'welcome' ? welcomeHTML() : tutorialHTML();
       if (focusTitle) {
         $('#q-title').focus({ preventScroll: true });
-        if (window.matchMedia('(max-width: 820px)').matches) panel.scrollIntoView({ block: 'start' });
+        if (window.matchMedia('(max-width: 860px)').matches) panel.scrollIntoView({ block: 'start' });
       }
       return;
     }
@@ -451,11 +525,12 @@ function startApp(QUIZ) {
     const ed = $('#editor');
     ed.value = draftFor(q);
     ed.addEventListener('scroll', syncScroll);
+    ['keyup', 'click', 'select', 'focus'].forEach(ev => ed.addEventListener(ev, syncCursor));
     syncHL();
     if (q.track === 'ts') loadBabel().catch(() => {});
     if (focusTitle) {
       $('#q-title').focus({ preventScroll: true });
-      if (window.matchMedia('(max-width: 820px)').matches) panel.scrollIntoView({ block: 'start' });
+      if (window.matchMedia('(max-width: 860px)').matches) panel.scrollIntoView({ block: 'start' });
     }
   }
 
@@ -598,6 +673,12 @@ function startApp(QUIZ) {
     renderPanel(focusTitle);
   }
 
+  // The brand in the sidebar header goes back to the welcome page.
+  $('#brand-link').addEventListener('click', e => {
+    e.preventDefault();
+    go('welcome', true);
+  });
+
   $('#nav').addEventListener('click', e => {
     const b = e.target.closest('[data-id]');
     if (b) go(b.getAttribute('data-id'), true);
@@ -696,7 +777,7 @@ function startApp(QUIZ) {
     const w = document.createElement('div');
     w.className = 'banner bad';
     w.innerHTML = '<strong>Data files</strong><span>' + QUIZ.problems.map(esc).join('<br>') + '</span>';
-    $('.app').insertBefore(w, $('.layout'));
+    $('#alerts').appendChild(w);
   }
   if (!QUESTIONS.length) { $('#panel').innerHTML = '<p>No questions yet. Add some to questions.json.</p>'; return; }
   // A link such as page.html#tutorial or page.html#sql-pricey-books opens that page directly.
@@ -709,7 +790,7 @@ function startApp(QUIZ) {
     const w = document.createElement('div');
     w.className = 'banner warn';
     w.innerHTML = '<strong>Limited</strong><span>' + (typeof alasql === 'undefined' ? 'The SQL engine did not load, so queries cannot run. Reload the page or check your connection.' : 'This viewer blocks dynamic code, so queries and tests cannot run here.') + '</span>';
-    $('.app').insertBefore(w, $('.layout'));
+    $('#alerts').appendChild(w);
   }
 }
 
@@ -743,6 +824,6 @@ Promise.all([loadJSON(QUESTIONS_URL), loadJSON(SCHEMA_URL), pageLoaded, fontsLoa
     w.className = 'banner bad';
     w.innerHTML = '<strong>Questions</strong><span></span>';
     w.querySelector('span').textContent = msg;
-    document.querySelector('.app').insertBefore(w, document.querySelector('.layout'));
+    document.getElementById('alerts').appendChild(w);
   })
   .finally(hideLoading);

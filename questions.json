@@ -48,6 +48,9 @@
       "    .map(p => p.name);",
       "}"
     ],
+    "examples": [
+      { "call": "topScorers([{name:'Kai',score:40},{name:'Lu',score:90}], 30)", "returns": "['Lu','Kai']" }
+    ],
     "tests": [
       { "label": "mixed scores", "call": "fn([{name:'Ana',score:50},{name:'Bo',score:70},{name:'Cy',score:70}], 50)", "expected": "['Bo','Cy','Ana']" },
       { "label": "empty list", "call": "fn([], 10)", "expected": "[]", "hidden": true },

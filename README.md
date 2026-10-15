@@ -54,6 +54,11 @@ Something wrong? A **red banner** on the page tells you what.
 
 - `fn` is the learner's function
 - `expected` is JS code **in a string**: `"4"`, `"[]"`, `"true"`
+- The question page shows an **example call**. Set `examples` to choose it yourself, so no test is revealed:
+  ```json
+  "examples": [{ "call": "double(5)", "returns": "10" }]
+  ```
+  Without `examples`, tests that don't have `hidden` are shown instead. Use `"examples": []` to show none.
 
 ## 🧩 Optional fields
 
@@ -64,6 +69,7 @@ Something wrong? A **red banner** on the page tells you what.
 | `id` | Keeps saved progress if you rename the question |
 | `ordered` | SQL only. Set `false` if row order doesn't matter |
 | `label` | Test name. Defaults to the `call` |
+| `examples` | TS only. Example calls shown on the question page |
 
 ## 💡 Tips
 

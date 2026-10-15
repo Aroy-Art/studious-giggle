@@ -450,7 +450,7 @@ function startApp(QUIZ) {
     }
 
     if (ui.armed[q.id] && !ui.reveal[q.id]) brief += '<div class="note"><strong>Heads up.</strong> Viewing the solution marks this question as viewed instead of solved.</div>';
-    if (ui.hint[q.id]) brief += '<div class="note hint"><strong>Hint.</strong> ' + esc(q.hint) + '</div>';
+    if (ui.hint[q.id]) brief += '<div class="note hint' + (ui.hintFlash === q.id ? ' flash' : '') + '" id="hint-box"><strong>Hint.</strong> ' + esc(q.hint) + '</div>';
     if (ui.reveal[q.id]) {
       brief += '<div class="section"><div class="sol-head"><div class="label">Reference solution</div><button type="button" class="btn" data-action="load-solution">Load into editor</button></div><pre><code>' + highlight(q.solution, q.track) + '</code></pre></div>';
     }
@@ -879,7 +879,16 @@ function startApp(QUIZ) {
       case 'run': runSql(q, false); break;
       case 'submit': runSql(q, true); break;
       case 'tests': runTs(q); break;
-      case 'hint': ui.hint[q.id] = !ui.hint[q.id]; keepEditor(q); break;
+      case 'hint': {
+        ui.hint[q.id] = !ui.hint[q.id];
+        // Pulse the hint box once when it opens, so it's easy to spot in the left column.
+        ui.hintFlash = ui.hint[q.id] ? q.id : null;
+        keepEditor(q);
+        ui.hintFlash = null;
+        const box = $('#hint-box');
+        if (box) box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        break;
+      }
       case 'reveal':
         if (ui.reveal[q.id]) { ui.reveal[q.id] = false; ui.armed[q.id] = false; }
         else if (ui.armed[q.id]) {

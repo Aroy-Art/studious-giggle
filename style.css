@@ -657,3 +657,8 @@ pre.example { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
 .engine-notes li { position: relative; padding-left: 14px; line-height: 1.45; }
 .engine-notes li::before { content: '-'; position: absolute; left: 0; color: var(--accent); }
 .engine-notes code { font-size: 0.92em; padding: 0 4px; }
+
+/* Editor selection: the textarea sits on top of the highlighted code, so its
+   selection must be see-through or it hides the code it selects. */
+.editor::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); color: transparent; }
+.editor::-moz-selection { background: color-mix(in srgb, var(--accent) 30%, transparent); color: transparent; }

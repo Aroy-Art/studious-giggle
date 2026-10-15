@@ -185,7 +185,76 @@ const ENGINE = (() => {
     return { results };
   }
 
-  return { runSQL, compareSQL, runTestsCore, makeDB };
+  // Type-checks the learner's code with the real TypeScript compiler (strict mode).
+  // Runs in a Web Worker and is stringified, so it must be self-contained.
+  // `getLib(name)` returns the text of a lib.*.d.ts file, or null.
+  // Returns { errors: [{ line, col, message }], signature: string | null }.
+  function typeCheckCore(ts, getLib, payload) {
+    const LIB_DIR = '/lib/';
+    const MAIN = '/solution.ts';
+    // User code first so its line numbers stay the same; then the reference
+    // solution inside a namespace, then one line that compares the signatures.
+    const fn = payload.fnName;
+    const ref = payload.reference
+      ? payload.reference.replace(new RegExp('(^|\\n)(\\s*)function\\s+' + fn + '\\b'), '$1$2export function ' + fn)
+      : null;
+    const userEnd = payload.code.length;
+    let text = payload.code + '\n';
+    let refStart = -1, checkStart = -1;
+    if (ref && fn) {
+      text += '\nnamespace __reference {\n';
+      refStart = text.length;
+      text += ref + '\n}\n';
+      checkStart = text.length;
+      text += 'const __signature_check: typeof __reference.' + fn + ' = ' + fn + ';\n';
+    }
+
+    const cache = typeCheckCore.cache || (typeCheckCore.cache = {});
+    const libText = name => getLib(name.slice(name.lastIndexOf('/') + 1));
+    const options = {
+      strict: true, noEmit: true, skipLibCheck: true, types: [],
+      target: ts.ScriptTarget.ES2020, lib: ['lib.es2020.d.ts'],
+    };
+    const host = {
+      getSourceFile(name, version) {
+        if (name === MAIN) return ts.createSourceFile(name, text, version);
+        if (cache[name] === undefined) {
+          const t = libText(name);
+          cache[name] = t == null ? null : ts.createSourceFile(name, t, version);
+        }
+        return cache[name] || undefined;
+      },
+      getDefaultLibFileName: () => LIB_DIR + 'lib.es2020.d.ts',
+      getDefaultLibLocation: () => LIB_DIR,
+      writeFile() {},
+      getCurrentDirectory: () => '/',
+      getDirectories: () => [],
+      fileExists: name => name === MAIN || libText(name) != null,
+      readFile: name => (name === MAIN ? text : libText(name) || undefined),
+      getCanonicalFileName: name => name,
+      useCaseSensitiveFileNames: () => true,
+      getNewLine: () => '\n',
+    };
+    const program = ts.createProgram([MAIN], options, host);
+    const out = [];
+    let signature = null;
+    for (const d of ts.getPreEmitDiagnostics(program)) {
+      if (!d.file || d.file.fileName !== MAIN || d.start == null) continue;
+      const msg = ts.flattenDiagnosticMessageText(d.messageText, '\n');
+      if (d.start <= userEnd) {
+        const lc = d.file.getLineAndCharacterOfPosition(d.start);
+        out.push({ line: lc.line + 1, col: lc.character + 1, message: msg });
+      } else if (checkStart >= 0 && d.start >= checkStart && !signature) {
+        signature = /Cannot find name/.test(msg)
+          ? 'Define a function named ' + fn + '.'
+          : 'The signature of ' + fn + ' does not match what the question expects. ' + msg;
+      }
+      // Errors inside the reference solution are ignored.
+    }
+    return { errors: out, signature };
+  }
+
+  return { runSQL, compareSQL, runTestsCore, typeCheckCore, makeDB };
 })();
 if (typeof module !== 'undefined') module.exports = ENGINE;
 
@@ -477,6 +546,7 @@ function startApp(QUIZ) {
     html += step(3, 'TypeScript: write the function, run the tests',
       '<p>Each TypeScript question names the function to write, and the editor starts with its signature. For example:</p>' + code(tsExample, 'ts') +
       '<p><strong>Run tests</strong> calls your function with several inputs. Some tests show their input and expected output; hidden tests only say pass or fail.</p>' +
+      '<p>Your code is also <strong>type-checked</strong> with the real TypeScript compiler in strict mode. Type errors don\'t stop the tests, but a question only counts as solved once the types check too.</p>' +
       '<ul class="tests">' +
         '<li class="test"><span class="pill pass">Pass</span><div><div class="what">doubles a positive number</div><dl><dt>call</dt><dd>fn(4)</dd></dl></div></li>' +
         '<li class="test"><span class="pill fail">Fail</span><div><div class="what">doubles a negative number</div><dl><dt>call</dt><dd>fn(-3)</dd><dt>expected</dt><dd>-6</dd><dt>received</dt><dd>6</dd></dl></div></li>' +
@@ -527,7 +597,7 @@ function startApp(QUIZ) {
     ed.addEventListener('scroll', syncScroll);
     ['keyup', 'click', 'select', 'focus'].forEach(ev => ed.addEventListener(ev, syncCursor));
     syncHL();
-    if (q.track === 'ts') loadBabel().catch(() => {});
+    if (q.track === 'ts') { loadBabel().catch(() => {}); warmTypeCheck(); }
     if (focusTitle) {
       $('#q-title').focus({ preventScroll: true });
       if (window.matchMedia('(max-width: 860px)').matches) panel.scrollIntoView({ block: 'start' });
@@ -585,6 +655,103 @@ function startApp(QUIZ) {
     return babelPromise;
   }
 
+  // ---------- TypeScript type checking ----------
+  // One long-lived worker: it loads the compiler and the ES2020 lib files once,
+  // then checks each run in a few milliseconds.
+  const TS_BASE = 'https://cdn.jsdelivr.net/npm/typescript@5.6.3/lib/';
+  const TC_WORKER_SRC = [
+    'const TS_BASE = ' + JSON.stringify(TS_BASE) + ';',
+    'const typeCheckCore = ' + ENGINE.typeCheckCore.toString() + ';',
+    'let libs = null, loading = null;',
+    // Fetch lib.es2020.d.ts and everything it references, level by level in parallel.
+    'async function prepare() {',
+    '  importScripts(TS_BASE + "typescript.min.js");',
+    '  const found = {}, seen = new Set(["lib.es2020.d.ts"]);',
+    '  let level = ["lib.es2020.d.ts"];',
+    '  while (level.length) {',
+    '    const texts = await Promise.all(level.map(n => fetch(TS_BASE + n).then(r => (r.ok ? r.text() : null))));',
+    '    const next = [];',
+    '    level.forEach((n, i) => {',
+    '      found[n] = texts[i];',
+    '      for (const m of (texts[i] || "").matchAll(/reference lib="([^"]+)"/g)) {',
+    '        const f = "lib." + m[1].toLowerCase() + ".d.ts";',
+    '        if (!seen.has(f)) { seen.add(f); next.push(f); }',
+    '      }',
+    '    });',
+    '    level = next;',
+    '  }',
+    '  libs = found;',
+    '}',
+    'onmessage = async function (e) {',
+    '  const { id, payload } = e.data;',
+    '  try {',
+    '    if (!loading) loading = prepare();',
+    '    await loading;',
+    '    if (!payload) { postMessage({ id, ready: true }); return; }',
+    '    postMessage({ id, result: typeCheckCore(ts, n => (libs[n] == null ? null : libs[n]), payload) });',
+    '  } catch (err) {',
+    '    loading = null;',
+    '    postMessage({ id, error: String((err && err.message) || err) });',
+    '  }',
+    '};',
+  ].join('\n');
+
+  let tcWorker = null, tcSeq = 0, tcReady = false;
+  const tcPending = new Map();
+  function tcStart() {
+    if (tcWorker) return tcWorker;
+    const url = URL.createObjectURL(new Blob([TC_WORKER_SRC], { type: 'text/javascript' }));
+    tcWorker = new Worker(url);
+    tcWorker.onmessage = e => {
+      const p = tcPending.get(e.data.id);
+      if (!p) return;
+      tcPending.delete(e.data.id);
+      clearTimeout(p.timer);
+      if (!e.data.error) tcReady = true;
+      p.resolve(e.data);
+    };
+    tcWorker.onerror = ev => {
+      if (ev && ev.preventDefault) ev.preventDefault();
+      tcPending.forEach(p => { clearTimeout(p.timer); p.resolve({ error: 'The type checker stopped unexpectedly.' }); });
+      tcPending.clear();
+      try { tcWorker.terminate(); } catch (e) { /* ignore */ }
+      tcWorker = null; tcReady = false;
+    };
+    return tcWorker;
+  }
+  // Resolves to { result } or { error }; never rejects. The first call waits for the download.
+  function typeCheck(payload) {
+    return new Promise(resolve => {
+      let w;
+      try { w = tcStart(); } catch (e) { resolve({ error: 'Type checking is not available in this browser.' }); return; }
+      const id = ++tcSeq;
+      const timer = setTimeout(() => {
+        tcPending.delete(id);
+        resolve({ error: tcReady ? 'Type checking took too long.' : 'The TypeScript compiler took too long to download.' });
+      }, tcReady ? 10000 : 60000);
+      tcPending.set(id, { resolve, timer });
+      w.postMessage({ id, payload });
+    });
+  }
+  // Start downloading the compiler as soon as a TypeScript question opens.
+  const warmTypeCheck = () => { if (!tcWorker && evalOk) typeCheck(null); };
+
+  function typeCheckItem(tc) {
+    if (tc.error) {
+      return '<li class="test"><span class="pill skip">Skip</span><div><div class="what">type check</div><div class="meta">Not available: ' + esc(tc.error) + ' The tests alone decide this run.</div></div></li>';
+    }
+    const { errors, signature } = tc.result;
+    const ok = !errors.length && !signature;
+    let inner = '<div class="what">type check <span class="tag-hidden">· strict TypeScript</span></div>';
+    if (signature) inner += '<div class="err">' + esc(signature) + '</div>';
+    if (errors.length) {
+      inner += '<ul class="ts-errors">' + errors.slice(0, 12).map(e =>
+        '<li><span class="loc">Line ' + e.line + ':' + e.col + '</span>' + esc(e.message) + '</li>').join('') + '</ul>';
+      if (errors.length > 12) inner += '<div class="meta">…and ' + (errors.length - 12) + ' more.</div>';
+    }
+    return '<li class="test"><span class="pill ' + (ok ? 'pass' : 'fail') + '">' + (ok ? 'Pass' : 'Fail') + '</span><div>' + inner + '</div></li>';
+  }
+
   const WORKER_SRC = 'const runTestsCore = ' + ENGINE.runTestsCore.toString() + ';\nonmessage = function (e) { postMessage(runTestsCore(e.data)); };';
   function execTests(payload) {
     return new Promise(resolve => {
@@ -622,9 +789,12 @@ function startApp(QUIZ) {
         setOut(banner('', 'Loading', 'Fetching the TypeScript compiler…'));
         try { await loadBabel(); } catch (e) { setOut(banner('bad', 'Cannot run', e.message + ' Check your connection and try again.')); return; }
       }
+      const source = $('#editor').value;
+      // Type check in parallel with the tests; it only warns, it never blocks the tests.
+      const tcPromise = typeCheck({ code: source, fnName: q.fnName, reference: q.solution });
       let code;
       try {
-        code = window.Babel.transform($('#editor').value, { presets: ['typescript'], filename: 'solution.ts' }).code;
+        code = window.Babel.transform(source, { presets: ['typescript'], filename: 'solution.ts' }).code;
       } catch (e) {
         const msg = String(e.message || e).replace(/^\/?solution\.ts: /, '');
         const [first, ...rest] = msg.split('\n');
@@ -634,15 +804,20 @@ function startApp(QUIZ) {
       const res = await execTests({ code, fnName: q.fnName, tests: q.tests.map(t => ({ call: t.call, expected: t.expected })) });
       if (res.timeout) { setOut(banner('bad', 'Timed out', 'Your function ran for more than 3 seconds. Look for a loop that never ends.')); return; }
       if (res.fatal) { setOut(banner('bad', 'Error', res.fatal)); return; }
+      if (!tcReady) setOut(banner('', 'Checking types', 'Downloading the TypeScript compiler. This only happens once…'));
+      const tc = await tcPromise;
+      const typesOk = !tc.error && !tc.result.errors.length && !tc.result.signature;
       const passed = res.results.filter(r => r.pass).length;
       const all = passed === q.tests.length;
       let head;
-      if (all) {
+      if (all && (typesOk || tc.error)) {
         markSolved(q);
         const viewed = state.status[q.id] === 'revealed';
-        head = banner('ok', 'All ' + q.tests.length + ' tests passed', viewed ? 'Not counted as solved because you viewed the solution.' : 'Marked as solved.');
+        head = banner('ok', 'All ' + q.tests.length + ' tests passed' + (typesOk ? ', types check' : ''), viewed ? 'Not counted as solved because you viewed the solution.' : 'Marked as solved.');
+      } else if (all) {
+        head = banner('warn', 'Tests pass, types don\'t', 'Your function works, but it has type errors. Fix them to mark it solved.');
       } else {
-        head = banner('bad', passed + ' of ' + q.tests.length + ' tests passed', 'Fix the failing cases below and run again.');
+        head = banner('bad', passed + ' of ' + q.tests.length + ' tests passed', 'Fix the failing cases below and run again.' + (!typesOk && !tc.error ? ' There are type errors too.' : ''));
       }
       const items = q.tests.map((t, i) => {
         const r = res.results[i];
@@ -655,7 +830,7 @@ function startApp(QUIZ) {
         if (r.error) inner += '<div class="err">' + esc(r.error) + '</div>';
         return '<li class="test"><span class="pill ' + (r.pass ? 'pass' : 'fail') + '">' + (r.pass ? 'Pass' : 'Fail') + '</span><div>' + inner + '</div></li>';
       }).join('');
-      setOut(head + '<ul class="tests">' + items + '</ul>');
+      setOut(head + '<ul class="tests">' + typeCheckItem(tc) + items + '</ul>');
     } finally {
       running = false;
       const b = $('[data-action="tests"]');

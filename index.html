@@ -47,20 +47,23 @@
           <details class="engine-notes">
             <summary>About the runtimes</summary>
             <section id="note-sql">
-              <h3><span class="badge">SQL</span>Runs on AlaSQL</h3>
-              <p>
-                Only single <code>SELECT</code> statements are accepted, and a
-                column alias can't be reused inside <code>HAVING</code> (repeat
-                the expression). Column names in your result don't matter, only
-                their order and values.
-              </p>
+              <h3><span class="badge">SQL</span>AlaSQL, in your browser</h3>
+              <ul>
+                <li>One <code>SELECT</code> statement per run</li>
+                <li>Repeat expressions in <code>HAVING</code>; aliases don't work there</li>
+                <li>Answers compare column order and values, not column names</li>
+                <li>Numbers are compared to 2 decimals</li>
+              </ul>
             </section>
             <section id="note-ts">
-              <h3><span class="badge">TS</span>Compiled with Babel</h3>
-              <p>
-                Types are removed but not checked, so a type error won't stop
-                your function from running. Tests have a 3-second time limit.
-              </p>
+              <h3><span class="badge">TS</span>TypeScript 5.6, strict mode</h3>
+              <ul>
+                <li>Type-checked by the real compiler, then run</li>
+                <li>Type errors don't stop the tests, but you need clean types to solve</li>
+                <li>ES2020 built-ins only, no DOM or Node APIs</li>
+                <li>Tests stop after 3 seconds</li>
+                <li>The first run downloads the compiler (~1 MB)</li>
+              </ul>
             </section>
           </details>
           <div class="saved">

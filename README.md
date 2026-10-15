@@ -53,6 +53,7 @@ Something wrong? A **red banner** on the page tells you what.
 ```
 
 - `fn` is the learner's function
+- Code is **type-checked in strict mode**. The learner's function must match the signature in `solution`, so write that one with proper types
 - `expected` is JS code **in a string**: `"4"`, `"[]"`, `"true"`
 - The question page shows an **example call**. Set `examples` to choose it yourself, so no test is revealed:
   ```json

@@ -35,6 +35,14 @@ It checks the questions, writes `questions.json` and prints the chain of keyword
 
 > ⚠ Rebuilding with a changed keyword or a new question order means players' saved keywords stop working for the questions after the change.
 
+## ✏️ Question editor
+
+```sh
+node editor.js
+```
+
+Open **http://localhost:5600** to edit `questions.src.json` in a form: add, reorder and delete questions, edit tests and keywords. **Save & build** (or <kbd>Ctrl</kbd>+<kbd>S</kbd>) writes the file, keeps the previous version as `questions.src.json.bak`, and runs `node build.js`. It only runs on your machine. Set `PORT` to use another port.
+
 ## ➕ Add a question
 
 1. Open `questions.src.json`

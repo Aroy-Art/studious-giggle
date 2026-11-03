@@ -340,7 +340,7 @@ function startApp(QUIZ) {
     const viewed = !next && state.viewedAny && q.viewedFlag;
     return '<div class="flag' + (next ? '' : viewed ? ' final viewed' : ' final') + '"><div class="flag-text"><span class="flag-label">' +
       (next ? 'Keyword for the next question' : viewed ? 'Final flag · a solution was viewed' : 'You captured the final flag') + '</span>' +
-      '<code class="flag-word">' + esc(viewed ? q.viewedFlag : q.keyword) + '</code></div>' +
+      '<button type="button" class="flag-word" data-copy="' + esc(viewed ? q.viewedFlag : q.keyword) + '" title="Click to copy">' + esc(viewed ? q.viewedFlag : q.keyword) + '</button></div>' +
       (next ? '<button type="button" class="btn" data-go="' + next.id + '">Next question →</button>' : '') + '</div>';
   }
 
@@ -966,6 +966,8 @@ function startApp(QUIZ) {
       $('#schema').innerHTML = schemaTableHTML(ui.table);
       return;
     }
+    const copyBtn = e.target.closest('[data-copy]');
+    if (copyBtn) { copyText(copyBtn); return; }
     const goBtn = e.target.closest('[data-go]');
     if (goBtn) { go(goBtn.getAttribute('data-go'), true); return; }
     const btn = e.target.closest('[data-action]');
@@ -1014,6 +1016,30 @@ function startApp(QUIZ) {
       case 'next': if (QUESTIONS[idx + 1]) go(QUESTIONS[idx + 1].id, true); break;
     }
   });
+
+  // Copy a keyword to the clipboard and say so on the button for a moment.
+  function copyText(btn) {
+    const text = btn.getAttribute('data-copy');
+    const done = () => {
+      btn.classList.add('copied');
+      btn.setAttribute('aria-label', text + ', copied');
+      clearTimeout(btn.copyTimer);
+      btn.copyTimer = setTimeout(() => { btn.classList.remove('copied'); btn.removeAttribute('aria-label'); }, 1600);
+    };
+    const fallback = () => {
+      const t = document.createElement('textarea');
+      t.value = text;
+      t.setAttribute('readonly', '');
+      t.style.cssText = 'position:fixed;opacity:0;';
+      document.body.appendChild(t);
+      t.select();
+      try { if (document.execCommand('copy')) done(); } catch (e) { /* ignore */ }
+      t.remove();
+      btn.focus();
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
+  }
 
   // Re-render the panel but keep what the learner has typed.
   function keepEditor(q) {

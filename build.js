@@ -6,6 +6,9 @@
 // The first question opens without a keyword. Every other question is encrypted
 // with the keyword of the question before it, so it stays unreadable until that
 // one is solved.
+//
+// The last question hands out one of two final flags: its keyword, or its
+// viewedFlag when the player looked at any solution along the way.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -45,6 +48,14 @@ if (problems.length) fail('Fix these first:\n  ' + problems.join('\n  '));
 // Same order as the sidebar. The sort is stable, so questions keep their order within a track.
 const chain = list.slice().sort((a, b) => TRACK_ORDER.indexOf(a.type) - TRACK_ORDER.indexOf(b.type));
 
+// Players who viewed a solution get this flag instead. When the author leaves it
+// out it is made from a hash, so neither flag can be guessed from the other.
+const last = chain[chain.length - 1];
+const viewedFlag = last.viewedFlag
+  ? String(last.viewedFlag)
+  : 'flag{viewed-' + crypto.createHash('sha256').update('viewed:' + CTF.normKeyword(last.keyword)).digest('hex').slice(0, 10) + '}';
+if (CTF.normKeyword(viewedFlag) === CTF.normKeyword(last.keyword)) fail('The last question\'s viewedFlag must differ from its keyword.');
+
 // Public ids must not give the title away, so they are a short hash of it.
 const seen = new Set();
 const idFor = q => {
@@ -59,7 +70,9 @@ const idFor = q => {
   const questions = [];
   let prevKeyword = '';
   for (const q of chain) {
-    const { id: _ignored, ...payload } = q;
+    // viewedFlag only means something on the last question.
+    const { id: _id, viewedFlag: _viewed, ...payload } = q;
+    if (q === last) payload.viewedFlag = viewedFlag;
     questions.push({ id: idFor(q), track: q.type, ...(await CTF.seal(payload, prevKeyword)) });
     prevKeyword = q.keyword;
   }
@@ -70,4 +83,5 @@ const idFor = q => {
     const label = (String(i + 1).padStart(2, ' ') + '. ' + q.type.toUpperCase().padEnd(3) + ' ' + q.title).padEnd(40);
     console.log('  ' + label + (i === chain.length - 1 ? ' final flag: ' : ' keyword: ') + CTF.normKeyword(q.keyword));
   });
+  console.log(''.padEnd(42) + ' if a solution was viewed: ' + viewedFlag + (last.viewedFlag ? '' : ' (generated)'));
 })().catch(e => fail(String((e && e.stack) || e)));

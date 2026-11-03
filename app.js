@@ -52,7 +52,7 @@ function buildQuiz(entries, schemaJson) {
 
     const q = {
       id: entry.id, track: entry.track, box: entry.box, title: raw.title, level: raw.level || 'Easy',
-      keyword: String(raw.keyword || ''), prompt: promptHTML(raw.prompt), hint: raw.hint ? dedent(raw.hint) : '',
+      keyword: String(raw.keyword || ''), viewedFlag: raw.viewedFlag ? String(raw.viewedFlag) : '', prompt: promptHTML(raw.prompt), hint: raw.hint ? dedent(raw.hint) : '',
     };
     if (raw.type === 'sql') {
       q.solution = dedent(raw.solution);
@@ -274,12 +274,14 @@ function startApp(QUIZ) {
 
   // ---------- state ----------
   // `keys` holds the keyword entered for each unlocked question; `captured` the questions whose keyword was earned.
+  // `viewedAny` stays set once any solution is shown, and swaps the final flag.
   function load() {
     const p = readStore();
     const known = id => !!(byId(id) || PAGES[id]);
     return {
       current: known(p.current) ? p.current : 'welcome', last: byId(p.last) && !byId(p.last).locked ? p.last : null,
       status: p.status || {}, drafts: p.drafts || {}, keys: p.keys || {}, captured: p.captured || {},
+      viewedAny: !!p.viewedAny || Object.values(p.status || {}).includes('revealed'),
     };
   }
   function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ } }
@@ -298,11 +300,13 @@ function startApp(QUIZ) {
   }
 
   // The keyword a solved question hands out, plus a shortcut to the question it unlocks.
+  // The last question's flag is different for players who viewed any solution.
   function flagHTML(q) {
     const next = QUESTIONS[QUESTIONS.indexOf(q) + 1];
-    return '<div class="flag' + (next ? '' : ' final') + '"><div class="flag-text"><span class="flag-label">' +
-      (next ? 'Keyword for the next question' : 'You captured the final flag') + '</span>' +
-      '<code class="flag-word">' + esc(q.keyword) + '</code></div>' +
+    const viewed = !next && state.viewedAny && q.viewedFlag;
+    return '<div class="flag' + (next ? '' : viewed ? ' final viewed' : ' final') + '"><div class="flag-text"><span class="flag-label">' +
+      (next ? 'Keyword for the next question' : viewed ? 'Final flag · a solution was viewed' : 'You captured the final flag') + '</span>' +
+      '<code class="flag-word">' + esc(viewed ? q.viewedFlag : q.keyword) + '</code></div>' +
       (next ? '<button type="button" class="btn" data-go="' + next.id + '">Next question →</button>' : '') + '</div>';
   }
 
@@ -469,7 +473,7 @@ function startApp(QUIZ) {
       }
     }
 
-    if (ui.armed[q.id] && !ui.reveal[q.id]) brief += '<div class="note"><strong>Heads up.</strong> Viewing the solution marks this question as viewed instead of solved.</div>';
+    if (ui.armed[q.id] && !ui.reveal[q.id]) brief += '<div class="note"><strong>Heads up.</strong> Viewing the solution marks this question as viewed instead of solved, and you will get a different final flag.</div>';
     if (ui.hint[q.id]) brief += '<div class="note hint' + (ui.hintFlash === q.id ? ' flash' : '') + '" id="hint-box"><strong>Hint.</strong> ' + esc(q.hint) + '</div>';
     if (ui.reveal[q.id]) {
       brief += '<div class="section"><div class="sol-head"><div class="label">Reference solution</div><button type="button" class="btn" data-action="load-solution">Load into editor</button></div><pre><code>' + highlight(q.solution, q.track) + '</code></pre></div>';
@@ -597,7 +601,7 @@ function startApp(QUIZ) {
       '</ul>');
 
     html += step(5, 'Stuck?',
-      '<p><strong>Hint</strong> gives a nudge without the answer. <strong>Solution</strong> needs a second click to confirm, and marks the question as viewed instead of solved. You still need to run it to get the keyword. <strong>Reset</strong> puts the starter code back.</p>');
+      '<p><strong>Hint</strong> gives a nudge without the answer. <strong>Solution</strong> needs a second click to confirm, and marks the question as viewed instead of solved. You still need to run it to get the keyword, and viewing any solution changes the final flag you get at the end. <strong>Reset</strong> puts the starter code back.</p>');
 
     html += step(6, 'Keyboard',
       '<p><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Enter</kbd> runs the query or the tests. <kbd>Tab</kbd> indents inside the editor; press <kbd>Esc</kbd> then <kbd>Tab</kbd> to move on.</p>');
@@ -945,6 +949,7 @@ function startApp(QUIZ) {
         if (ui.reveal[q.id]) { ui.reveal[q.id] = false; ui.armed[q.id] = false; }
         else if (ui.armed[q.id]) {
           ui.reveal[q.id] = true;
+          state.viewedAny = true;
           if (state.status[q.id] !== 'solved') state.status[q.id] = 'revealed';
           save(); renderNav(); renderProgress();
         } else ui.armed[q.id] = true;
@@ -1024,7 +1029,7 @@ function startApp(QUIZ) {
     const b = e.currentTarget;
     if (!ui.resetArmed) { ui.resetArmed = true; b.classList.add('armed'); b.textContent = 'Click again to erase all progress and drafts'; return; }
     // Also forget the keywords, then reload so every question locks again.
-    state.status = {}; state.drafts = {}; state.keys = {}; state.captured = {};
+    state.status = {}; state.drafts = {}; state.keys = {}; state.captured = {}; state.viewedAny = false;
     state.current = 'welcome'; state.last = null;
     save();
     try { history.replaceState(null, '', location.pathname + location.search); } catch (err) { /* ignore */ }

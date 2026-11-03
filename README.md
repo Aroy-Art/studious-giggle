@@ -96,6 +96,7 @@ Something wrong? A **red banner** on the page tells you what.
   Without `examples`, tests that don't have `hidden` are shown instead. Use `"examples": []` to show none.
 
 - `keyword` is what a player gets for solving this question, and what unlocks the next one. Case and extra spaces don't matter. The last question's keyword is the final flag, e.g. `"flag{select-and-return}"`
+- `viewedFlag` (last question only, optional) is the final flag for players who opened **any** solution along the way, e.g. `"flag{peeked}"`. Leave it out and `build.js` makes one from a hash, so neither flag can be guessed from the other
 
 ## 🧩 Optional fields
 

@@ -124,15 +124,43 @@ button, input, select, textarea { font: inherit; color: inherit; }
 aside { border-right: 1px solid var(--line); padding: 18px 16px; display: grid; gap: 14px; align-content: start; position: sticky; top: 0; height: 100vh; overflow: auto; }
 h1 { font-size: 16px; margin: 0; letter-spacing: 0.02em; }
 h1 small { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
-.list { display: grid; gap: 2px; }
-.item { display: grid; grid-template-columns: 26px 34px minmax(0, 1fr); gap: 6px; align-items: center; text-align: left; padding: 7px 8px; border: 0; background: transparent; cursor: pointer; border-radius: 4px; }
+.list { position: relative; display: grid; padding-left: 22px; }
+.list::before { content: ''; position: absolute; left: 7px; top: 10px; bottom: 10px; width: 2px; background: var(--soft); }
+.item { position: relative; display: grid; grid-template-columns: 26px 34px minmax(0, 1fr); gap: 6px; align-items: center; text-align: left; padding: 7px 8px; border: 1px solid var(--soft); background: var(--surface); cursor: pointer; border-radius: 4px; }
+.item::before { content: ''; position: absolute; left: -20px; top: 50%; width: 10px; height: 10px; margin-top: -5px; border-radius: 50%; background: var(--bg); border: 2px solid var(--accent); }
 .item:hover { background: var(--sunken); }
-.item[aria-current="true"] { background: var(--accent); color: var(--accent-ink); }
+.item[aria-current="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.item[aria-current="true"]::before { background: var(--accent); }
 .item .n { color: var(--faint); font-size: 12px; }
 .item[aria-current="true"] .n { color: inherit; }
 .item .ty { font-size: 11px; font-weight: 600; border: 1px solid currentColor; text-align: center; border-radius: 3px; }
 .item .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.item .k { grid-column: 3; font-size: 11.5px; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the links between questions: a keyword hands over to the next node */
+.link, .cap, .sec { position: relative; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.link { display: flex; gap: 6px; min-width: 0; padding: 7px 8px 7px 10px; }
+.link b { overflow: hidden; text-overflow: ellipsis; }
+.link::before { content: '▼'; position: absolute; left: -21px; top: 50%; margin-top: -8px; font-size: 10px; line-height: 16px; width: 12px; text-align: center; background: var(--bg); color: var(--accent); }
+.link b { color: var(--fg); font-weight: 600; }
+.link.missing, .link.missing b { color: var(--bad); }
+.link.missing::before { color: var(--bad); }
+.cap { padding: 4px 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+.cap::before { content: ''; position: absolute; left: -19px; top: 50%; width: 8px; height: 8px; margin-top: -4px; background: var(--fg); }
+.cap.end::before { background: var(--ok); }
+.sec { padding: 12px 8px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; color: var(--accent); }
+.flags { display: grid; gap: 2px; padding: 6px 8px; }
+.flags span { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flags b { color: var(--ok); }
+.flags .alt b { color: var(--muted); }
+/* in the form: where this question sits in the chain */
+.chainbox { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: stretch; }
+.cb { display: grid; gap: 4px; align-content: start; padding: 10px 12px; border: 1px solid var(--soft); border-radius: 6px; background: var(--surface); min-width: 0; }
+.cb.me { border-color: var(--accent); background: var(--accent-tint); }
+.cb .v { overflow-wrap: anywhere; }
+.cb .v b { color: var(--accent); }
+.cb .go { justify-self: start; border: 0; background: none; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; text-align: left; }
+.arrow { align-self: center; color: var(--accent); font-size: 18px; }
+.warn { color: var(--bad); }
+.soft { color: var(--muted); font-style: italic; }
 .note { font-size: 12px; color: var(--muted); margin: 0; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .btn { border: 1px solid var(--line); background: var(--surface); padding: 6px 12px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
@@ -169,6 +197,8 @@ legend { padding: 0 6px; }
   aside { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
   main { padding: 16px 16px 60px; }
   .trow, .trow.ex { grid-template-columns: 1fr; padding-bottom: 8px; border-bottom: 1px dashed var(--soft); }
+  .chainbox { grid-template-columns: 1fr; }
+  .arrow { transform: rotate(90deg); justify-self: center; }
   .thead { display: none; }
 }
 </style>
@@ -182,7 +212,7 @@ legend { padding: 0 6px; }
       <button class="btn" id="add-ts" type="button">+ TS</button>
     </div>
     <nav class="list" id="list" aria-label="Questions"></nav>
-    <p class="note">Unlock order: all SQL questions first, then all TS, each in this order. Each keyword unlocks the next question; the last one is the final flag.</p>
+    <p class="note">Players go top to bottom: all SQL, then all TypeScript. Each keyword unlocks the next question. ↑/↓ reorder within a section.</p>
   </aside>
   <main>
     <div class="bar">
@@ -203,7 +233,7 @@ const $ = s => document.querySelector(s);
 let qs = [], sel = 0, dirty = false, saving = false, armedDelete = false;
 
 // Keys are written in this order; anything else the file has is kept after them.
-const ORDER = ['type', 'id', 'title', 'level', 'keyword', 'prompt', 'hint', 'ordered', 'fnName', 'starter', 'solution', 'examples', 'tests'];
+const ORDER = ['type', 'id', 'title', 'level', 'keyword', 'viewedFlag', 'prompt', 'hint', 'ordered', 'fnName', 'starter', 'solution', 'examples', 'tests'];
 function tidy(q) {
   const out = {};
   for (const k of ORDER) if (q[k] !== undefined) out[k] = q[k];
@@ -226,23 +256,59 @@ function setDirty(d) {
   s.classList.toggle('dirty', d);
 }
 
+const TRACK_NAME = { sql: 'SQL', ts: 'TypeScript' };
+const TRACKS = ['sql', 'ts'];
+// build.js unlocks questions in this order, so the editor keeps the list in it too.
+function chainSort() {
+  const current = qs[sel];
+  qs = qs.map((q, i) => [q, i]).sort((a, b) => TRACKS.indexOf(a[0].type) - TRACKS.indexOf(b[0].type) || a[1] - b[1]).map(x => x[0]);
+  sel = Math.max(0, qs.indexOf(current));
+}
+const nameOf = i => String(i + 1).padStart(2, '0') + ' ' + (qs[i].title || '(untitled)');
+const isLast = i => i === qs.length - 1;
+
 function renderList() {
   const list = $('#list');
   list.innerHTML = '';
   if (!qs.length) { list.innerHTML = '<p class="note">No questions yet.</p>'; return; }
+  list.append(el('div', { className: 'cap', textContent: 'Start · first question is open' }));
   qs.forEach((q, i) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'item';
+    if (!i || qs[i - 1].type !== q.type) list.append(el('div', { className: 'sec', textContent: '## ' + TRACK_NAME[q.type] }));
+    const b = el('button', { type: 'button', className: 'item', onclick: () => { sel = i; armedDelete = false; render(); } });
     b.setAttribute('aria-current', String(i === sel));
-    b.innerHTML = '<span class="n"></span><span class="ty"></span><span class="t"></span><span class="k"></span>';
-    b.querySelector('.n').textContent = String(i + 1).padStart(2, '0');
-    b.querySelector('.ty').textContent = q.type === 'ts' ? 'TS' : 'SQL';
-    b.querySelector('.t').textContent = q.title || '(untitled)';
-    b.querySelector('.k').textContent = q.keyword ? '🔑 ' + q.keyword : '⚠ no keyword';
-    b.addEventListener('click', () => { sel = i; armedDelete = false; render(); });
-    list.appendChild(b);
+    b.append(
+      el('span', { className: 'n', textContent: String(i + 1).padStart(2, '0') }),
+      el('span', { className: 'ty', textContent: q.type === 'ts' ? 'TS' : 'SQL' }),
+      el('span', { className: 't', textContent: q.title || '(untitled)' }));
+    list.append(b);
+    if (!q.keyword) {
+      list.append(el('div', { className: 'link missing', title: 'Missing keyword' }, ['⚠', el('b', { textContent: 'no keyword' })]));
+    } else if (!isLast(i)) {
+      list.append(el('div', { className: 'link', title: 'Solving ' + nameOf(i) + ' gives this keyword. It unlocks ' + nameOf(i + 1) + '.' }, ['🔑', el('b', { textContent: q.keyword })]));
+    }
   });
+  const last = qs[qs.length - 1];
+  list.append(el('div', { className: 'flags' }, [
+    el('span', { title: 'Final flag' }, ['🏁 ', el('b', { textContent: last.keyword || '—' })]),
+    el('span', { className: 'alt', title: 'Final flag when any solution was viewed' }, ['👁 ', el('b', { textContent: last.viewedFlag || 'auto' }), ' if a solution was viewed']),
+  ]));
+  list.append(el('div', { className: 'cap end', textContent: 'End' }));
+}
+
+// Where the selected question sits: what unlocks it, and what it unlocks.
+function chainBox() {
+  const i = sel, q = qs[i];
+  const go = j => el('button', { type: 'button', className: 'go', textContent: nameOf(j), onclick: () => { sel = j; render(); } });
+  const kw = (text, warnText, soft) => (text ? el('b', { textContent: '“' + text + '”' }) : el('span', { className: soft ? 'soft' : 'warn', textContent: warnText }));
+  const before = i === 0
+    ? el('div', { className: 'cb' }, [labelText('Unlocked by'), el('div', { className: 'v', textContent: 'Nothing. This is the first question, open from the start.' })])
+    : el('div', { className: 'cb' }, [labelText('Unlocked by'), el('div', { className: 'v' }, ['the keyword ', kw(qs[i - 1].keyword, 'missing'), ' from']), go(i - 1)]);
+  const me = el('div', { className: 'cb me' }, [labelText('This question'), el('div', { className: 'v', textContent: nameOf(i) })]);
+  const after = isLast(i)
+    ? el('div', { className: 'cb' }, [labelText('Hands out'), el('div', { className: 'v' }, ['the final flag ', kw(q.keyword, 'missing')]),
+      el('div', { className: 'v' }, ['or ', kw(q.viewedFlag, 'an auto-made flag', true), ' if any solution was viewed'])])
+    : el('div', { className: 'cb' }, [labelText('Hands out'), el('div', { className: 'v' }, ['the keyword ', kw(q.keyword, 'missing'), ' which unlocks']), go(i + 1)]);
+  return el('div', { className: 'chainbox', id: 'chainbox' }, [before, el('span', { className: 'arrow', textContent: '→' }), me, el('span', { className: 'arrow', textContent: '→' }), after]);
 }
 
 // Small DOM builders.
@@ -285,32 +351,46 @@ function tabIndent(e) {
   if (e.key !== 'Shift') escaped = false;
 }
 
-function changed() { setDirty(true); renderList(); }
+function changed() {
+  setDirty(true);
+  renderList();
+  const box = $('#chainbox');
+  if (box && qs.length) box.replaceWith(chainBox());
+}
 
 function render() {
   renderList();
   const form = $('#form');
   form.innerHTML = '';
-  ['#up', '#down', '#del'].forEach(id => { $(id).disabled = !qs.length; });
+  $('#del').disabled = !qs.length;
+  $('#up').disabled = !qs[sel - 1] || qs[sel - 1].type !== qs[sel].type;
+  $('#down').disabled = !qs[sel + 1] || qs[sel + 1].type !== qs[sel].type;
   $('#del').textContent = armedDelete ? 'Click again to delete' : 'Delete';
   if (!qs.length) { form.append(el('p', { className: 'empty', textContent: 'Add a question with + SQL or + TS.' })); return; }
   const q = qs[sel];
   const isTs = q.type === 'ts';
 
+  // Changing the type moves the question into the other section of the chain.
   const type = el('select', {
-    onchange: e => { q.type = e.target.value; changed(); render(); },
+    onchange: e => { q.type = e.target.value; chainSort(); changed(); render(); },
   }, [el('option', { value: 'sql', textContent: 'SQL' }), el('option', { value: 'ts', textContent: 'TypeScript' })]);
   type.value = q.type;
 
+  form.append(chainBox());
   form.append(el('div', { className: 'grid' }, [
     field('Type', '', type),
     field('Title', '', textInput(q, 'title')),
     field('Level', 'default Easy', textInput(q, 'level', 'Easy')),
   ]));
   form.append(el('div', { className: 'grid' }, [
-    field('Keyword', sel === qs.length - 1 ? 'shown when solved' : 'shown when solved, unlocks the next question', textInput(q, 'keyword', 'e.g. night ferry')),
+    field(isLast(sel) ? 'Final flag' : 'Keyword', isLast(sel) ? 'shown when solved' : 'shown when solved, unlocks the next question', textInput(q, 'keyword', isLast(sel) ? 'e.g. flag{...}' : 'e.g. night ferry')),
     field('Id', 'optional, keeps progress when renaming', textInput(q, 'id')),
   ]));
+  if (isLast(sel)) {
+    form.append(el('div', { className: 'grid' }, [
+      field('Final flag if a solution was viewed', 'blank = made from a hash on build', textInput(q, 'viewedFlag', 'e.g. flag{peeked}')),
+    ]));
+  }
   form.append(field('Prompt', 'one paragraph per line, HTML allowed', area(q, 'prompt', { rows: 3, prose: true })));
   form.append(field('Hint', 'optional', area(q, 'hint', { rows: 2, prose: true })));
 
@@ -419,7 +499,7 @@ function add(type) {
 
 function move(d) {
   const j = sel + d;
-  if (j < 0 || j >= qs.length) return;
+  if (j < 0 || j >= qs.length || qs[j].type !== qs[sel].type) return;
   [qs[sel], qs[j]] = [qs[j], qs[sel]];
   sel = j;
   changed(); render();
@@ -445,6 +525,7 @@ window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); 
 fetch('/api/questions').then(r => r.json()).then(data => {
   if (data.error) { showOut('bad', data.error); $('#status').textContent = 'Not loaded'; $('#save').disabled = true; return; }
   qs = data.questions;
+  chainSort();
   if (data.missing) showOut('', 'questions.src.json does not exist yet. Saving will create it.');
   setDirty(false);
   render();

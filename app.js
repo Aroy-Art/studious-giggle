@@ -1,10 +1,14 @@
 // Questions and SQL tables are loaded from these files. See README.md for the formats.
+// questions.json is built (encrypted) from questions.src.json by build.js.
 const QUESTIONS_URL = 'questions.json';
 const SCHEMA_URL = 'schema.json';
+const STORE_KEY = 'select-and-return:ctf1';
 
 // Question bank for "Select & Return". Pure data, no DOM, so it can be tested in Node.
-function buildQuiz(QUESTION_LIST, schemaJson) {
-  if (!Array.isArray(QUESTION_LIST)) QUESTION_LIST = [];
+// `entries` is the capture-the-flag chain: [{ id, track, box, raw }], where raw is the
+// decrypted question, or null while it is still locked.
+function buildQuiz(entries, schemaJson) {
+  if (!Array.isArray(entries)) entries = [];
   const problems = [];
 
   // schema.json: { table: { columns: [{ name, type }], rows: [[...], ...] } }. Rows become objects keyed by column.
@@ -33,26 +37,22 @@ function buildQuiz(QUESTION_LIST, schemaJson) {
     if (/<p[\s>]/i.test(text)) return text;
     return text.split('\n').map(l => l.trim()).filter(Boolean).map(l => '<p>' + l + '</p>').join('');
   }
-  const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-  // Turn the questions.json entries into the shape the app uses, collecting mistakes.
-  const seen = new Set();
-  const QUESTIONS = [];
-  QUESTION_LIST.forEach((raw, i) => {
+  // A question that has not been unlocked yet: only its id and track are public.
+  const lockedQuestion = entry => ({ id: entry.id, track: entry.track, box: entry.box, locked: true, title: 'Locked', level: '' });
+
+  // Turn a decrypted question into the shape the app uses. Returns null and records a problem if it is broken.
+  function makeQuestion(entry, raw, i) {
     const where = 'Question ' + (i + 1) + (raw && raw.title ? ' ("' + raw.title + '")' : '');
-    const missing = f => { problems.push(where + ': missing ' + f + '.'); };
-    if (!raw || (raw.type !== 'sql' && raw.type !== 'ts')) { problems.push(where + ": type must be 'sql' or 'ts'."); return; }
+    const missing = f => { problems.push(where + ': missing ' + f + '.'); return null; };
+    if (!raw || raw.type !== entry.track) { problems.push(where + ": type must be '" + entry.track + "'."); return null; }
     if (!raw.title) return missing('title');
     if (!raw.prompt) return missing('prompt');
     if (!raw.solution) return missing('solution');
 
-    let id = raw.id || raw.type + '-' + slug(raw.title);
-    for (let n = 2; seen.has(id); n++) id = (raw.id || raw.type + '-' + slug(raw.title)) + '-' + n;
-    seen.add(id);
-
     const q = {
-      id, track: raw.type, title: raw.title, level: raw.level || 'Easy',
-      prompt: promptHTML(raw.prompt), hint: raw.hint ? dedent(raw.hint) : '',
+      id: entry.id, track: entry.track, box: entry.box, title: raw.title, level: raw.level || 'Easy',
+      keyword: String(raw.keyword || ''), prompt: promptHTML(raw.prompt), hint: raw.hint ? dedent(raw.hint) : '',
     };
     if (raw.type === 'sql') {
       q.solution = dedent(raw.solution);
@@ -76,14 +76,14 @@ function buildQuiz(QUESTION_LIST, schemaJson) {
           : { call: String(e.call || ''), returns: e.returns != null ? String(e.returns) : null }));
       }
     }
-    QUESTIONS.push(q);
-  });
+    return q;
+  }
 
-  // Keep each track together so Previous/Next follows the sidebar order.
+  // The chain is already in sidebar order (build.js puts each track together).
+  const QUESTIONS = entries.map((e, i) => (e.raw && makeQuestion(e, e.raw, i)) || lockedQuestion(e));
   const TRACKS = [['sql', 'SQL'], ['ts', 'TypeScript']];
-  const ordered = TRACKS.flatMap(([t]) => QUESTIONS.filter(q => q.track === t));
 
-  return { SCHEMA, QUESTIONS: ordered, TRACKS, problems };
+  return { SCHEMA, QUESTIONS, TRACKS, problems, makeQuestion };
 }
 if (typeof module !== 'undefined') module.exports = buildQuiz;
 
@@ -262,7 +262,6 @@ function startApp(QUIZ) {
   'use strict';
 
   const BABEL_SRC = 'https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js';
-  const STORE_KEY = 'select-and-return:v2';
   const TYPE_LABEL = { INT: 'int', STRING: 'text', NUMBER: 'decimal' };
   const SQL_STARTER = '-- Write your query here\nSELECT ';
 
@@ -274,17 +273,14 @@ function startApp(QUIZ) {
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   // ---------- state ----------
+  // `keys` holds the keyword entered for each unlocked question; `captured` the questions whose keyword was earned.
   function load() {
-    const base = { current: 'welcome', last: null, status: {}, drafts: {} };
-    try {
-      const raw = localStorage.getItem(STORE_KEY);
-      if (raw) {
-        const p = JSON.parse(raw);
-        const known = id => !!(byId(id) || PAGES[id]);
-        return { current: known(p.current) ? p.current : base.current, last: byId(p.last) ? p.last : null, status: p.status || {}, drafts: p.drafts || {} };
-      }
-    } catch (e) { /* storage unavailable */ }
-    return base;
+    const p = readStore();
+    const known = id => !!(byId(id) || PAGES[id]);
+    return {
+      current: known(p.current) ? p.current : 'welcome', last: byId(p.last) && !byId(p.last).locked ? p.last : null,
+      status: p.status || {}, drafts: p.drafts || {}, keys: p.keys || {}, captured: p.captured || {},
+    };
   }
   function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ } }
   const state = load();
@@ -297,7 +293,30 @@ function startApp(QUIZ) {
 
   function markSolved(q) {
     if (state.status[q.id] !== 'revealed') state.status[q.id] = 'solved';
+    state.captured[q.id] = true;
     save(); renderNav(); renderProgress();
+  }
+
+  // The keyword a solved question hands out, plus a shortcut to the question it unlocks.
+  function flagHTML(q) {
+    const next = QUESTIONS[QUESTIONS.indexOf(q) + 1];
+    return '<div class="flag' + (next ? '' : ' final') + '"><div class="flag-text"><span class="flag-label">' +
+      (next ? 'Keyword for the next question' : 'You captured the final flag') + '</span>' +
+      '<code class="flag-word">' + esc(q.keyword) + '</code></div>' +
+      (next ? '<button type="button" class="btn" data-go="' + next.id + '">Next question →</button>' : '') + '</div>';
+  }
+
+  // Try a keyword on a locked question. On success the question replaces its placeholder.
+  async function unlock(q, keyword) {
+    const raw = await CTF.open(q.box, keyword);
+    if (!raw) return 'wrong';
+    const i = QUESTIONS.indexOf(q);
+    const fresh = QUIZ.makeQuestion(q, raw, i);
+    if (!fresh) return 'broken';
+    QUESTIONS[i] = fresh;
+    state.keys[q.id] = CTF.normKeyword(keyword);
+    save();
+    return 'ok';
   }
 
   // ---------- rail: progress + nav ----------
@@ -327,7 +346,7 @@ function startApp(QUIZ) {
       const done = list.filter(q => state.status[q.id] === 'solved').length;
       return '<section><h3><span>' + name + '</span><span>' + done + '/' + list.length + '</span></h3><div class="nav-list">' +
         list.map((q, i) => {
-          const st = state.status[q.id];
+          const st = q.locked ? 'locked' : state.status[q.id];
           const label = esc(q.title) + (st === 'solved' ? '<span class="sr-only"> (solved)</span>' : st === 'revealed' ? '<span class="sr-only"> (solution viewed)</span>' : '');
           return item(q.id, pad(i + 1), label, st, q.level);
         }).join('') + '</div></section>';
@@ -423,6 +442,7 @@ function startApp(QUIZ) {
       (st === 'solved' ? '<span class="tag solved">Solved</span>' : st === 'revealed' ? '<span class="tag revealed">Viewed</span>' : '') + '</div>' +
       '<h2 id="q-title" tabindex="-1">' + esc(q.title) + '</h2></header>';
     brief += '<div class="prompt">' + q.prompt + '</div>';
+    if (state.captured[q.id]) brief += '<div class="section"><div class="label"><span>Captured</span></div>' + flagHTML(q) + '</div>';
 
     if (isSql) {
       const exp = expectedFor(q);
@@ -478,6 +498,24 @@ function startApp(QUIZ) {
     return '<div class="q"><section class="q-brief">' + brief + '</section><section class="q-work" aria-label="Editor">' + work + '</section></div>';
   }
 
+  // ---------- locked question: ask for the keyword ----------
+  function lockedHTML(q) {
+    const list = QUESTIONS.filter(x => x.track === q.track);
+    const idx = QUESTIONS.indexOf(q);
+    const prev = QUESTIONS[idx - 1], next = QUESTIONS[idx + 1];
+    const from = prev && !prev.locked ? '<strong>' + esc(prev.title) + '</strong>' : 'the previous question';
+    return '<div class="locked"><header class="q-head"><div class="eyebrow"><span class="track">' + (q.track === 'sql' ? 'SQL' : 'TS') + '</span>' +
+      '<span>' + pad(list.indexOf(q) + 1) + ' / ' + pad(list.length) + '</span><span class="tag">Locked</span></div>' +
+      '<h2 id="q-title" tabindex="-1">Locked</h2></header>' +
+      '<p class="lede">Solve ' + from + ' to get its keyword, then enter it here to unlock this question.</p>' +
+      '<form class="unlock" id="unlock-form" autocomplete="off"><label class="label" for="keyword"><span>Keyword</span></label>' +
+      '<div class="unlock-row"><input id="keyword" class="unlock-input" type="text" spellcheck="false" autocapitalize="off" autocorrect="off" required />' +
+      '<button type="submit" class="btn primary">Unlock</button></div>' +
+      '<div class="out" id="unlock-msg" role="status" aria-live="polite"></div></form>' +
+      '<div class="pager"><button type="button" class="btn" data-go="' + (prev ? prev.id : 'tutorial') + '">← ' + (prev ? esc(prev.title) : 'How it works') + '</button>' +
+      (next ? '<button type="button" class="btn" data-go="' + next.id + '">' + esc(next.title) + ' →</button>' : '') + '</div></div>';
+  }
+
   // ---------- welcome + tutorial pages ----------
   const firstOpen = list => list.find(q => !state.status[q.id]) || list[0];
 
@@ -489,6 +527,7 @@ function startApp(QUIZ) {
 
     let html = '<div class="welcome"><section class="hero"><div class="hero-copy">' +
       '<h2 id="q-title" tabindex="-1">Write it. Run it. <em>Return the right data.</em></h2>' +
+      '<p class="lede">Capture the flag: every solved question hands you a keyword, and that keyword unlocks the next one.</p>' +
       '<div class="actions">' +
       (started && last
         ? '<button type="button" class="btn primary" data-go="' + last.id + '">Continue: ' + esc(last.title) + ' →</button>'
@@ -503,7 +542,7 @@ function startApp(QUIZ) {
       if (!list.length) return '';
       const done = list.filter(q => state.status[q.id] === 'solved').length;
       const pct = Math.round((done / list.length) * 100);
-      const levels = [...new Set(list.map(q => q.level))].join(' · ');
+      const levels = [...new Set(list.map(q => q.level).filter(Boolean))].join(' · ');
       const blurb = track === 'sql'
         ? 'Query a small bookshop database: authors, books, customers and orders.'
         : 'Write small functions, checked by visible and hidden tests.';
@@ -536,14 +575,18 @@ function startApp(QUIZ) {
     html += step(1, 'Pick a question',
       '<p>The sidebar lists every question, grouped into SQL and TypeScript. The dot next to each one turns <strong style="color:var(--ok)">green</strong> when you solve it, or <strong style="color:var(--warn)">amber</strong> if you looked at the solution first.</p>');
 
-    html += step(2, 'SQL: read, query, submit',
+    html += step(2, 'Capture the flag',
+      '<p>Only the first question is open. Solve it and you get a <strong>keyword</strong>. Open the next question, type the keyword, and it unlocks. Each question\'s keyword opens the one after it, and the last one hands out the final flag.</p>' +
+      '<p>Keywords are saved in this browser, so unlocked questions stay unlocked. Your solved questions show their keyword again under <strong>Captured</strong>.</p>');
+
+    html += step(3, 'SQL: read, query, submit',
       '<p>Every SQL question uses the same tables. Click a table name to look at its data. <strong>Target</strong> tells you how many columns and rows the answer has, and you can peek at the expected result.</p>' +
       '<p>Try it with this example query:</p>' + code(sqlExample, 'sql') +
       '<div class="actions"><button type="button" class="btn" data-action="tut-run">Run this example</button></div>' +
       '<div class="out" id="tut-out" role="status" aria-live="polite"></div>' +
       '<p><strong>Run</strong> only shows your result. <strong>Submit answer</strong> compares it with the expected result. Column names don\'t matter, but column order, values and (when the question asks for a sort) row order do. Numbers are compared to 2 decimals.</p>');
 
-    html += step(3, 'TypeScript: write the function, run the tests',
+    html += step(4, 'TypeScript: write the function, run the tests',
       '<p>Each TypeScript question names the function to write, and the editor starts with its signature. For example:</p>' + code(tsExample, 'ts') +
       '<p><strong>Run tests</strong> calls your function with several inputs. Some tests show their input and expected output; hidden tests only say pass or fail.</p>' +
       '<p>Your code is also <strong>type-checked</strong> with the real TypeScript compiler in strict mode. Type errors don\'t stop the tests, but a question only counts as solved once the types check too.</p>' +
@@ -553,14 +596,14 @@ function startApp(QUIZ) {
         '<li class="test"><span class="pill pass">Pass</span><div><div class="what">zero <span class="tag-hidden">· hidden test</span></div></div></li>' +
       '</ul>');
 
-    html += step(4, 'Stuck?',
-      '<p><strong>Hint</strong> gives a nudge without the answer. <strong>Solution</strong> needs a second click to confirm, and marks the question as viewed instead of solved. <strong>Reset</strong> puts the starter code back.</p>');
+    html += step(5, 'Stuck?',
+      '<p><strong>Hint</strong> gives a nudge without the answer. <strong>Solution</strong> needs a second click to confirm, and marks the question as viewed instead of solved. You still need to run it to get the keyword. <strong>Reset</strong> puts the starter code back.</p>');
 
-    html += step(5, 'Keyboard',
+    html += step(6, 'Keyboard',
       '<p><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Enter</kbd> runs the query or the tests. <kbd>Tab</kbd> indents inside the editor; press <kbd>Esc</kbd> then <kbd>Tab</kbd> to move on.</p>');
 
-    html += step(6, 'Your progress',
-      '<p>Solved questions and everything you type are saved in this browser automatically. <strong>Reset progress</strong> at the bottom of the sidebar clears it all.</p>');
+    html += step(7, 'Your progress',
+      '<p>Solved questions and everything you type are saved in this browser automatically. <strong>Reset progress</strong> at the bottom of the sidebar clears it all and locks every question again.</p>');
 
     html += '</ol><div class="pager"><button type="button" class="btn" data-go="welcome">← Welcome</button>' +
       (firstQ ? '<button type="button" class="btn primary" data-go="' + firstQ.id + '">Start: ' + esc(firstQ.title) + ' →</button>' : '') + '</div></div>';
@@ -591,6 +634,14 @@ function startApp(QUIZ) {
       return;
     }
     const q = byId(state.current);
+    if (q.locked) {
+      panel.innerHTML = lockedHTML(q);
+      if (focusTitle) {
+        $('#q-title').focus({ preventScroll: true });
+        if (window.matchMedia('(max-width: 860px)').matches) panel.scrollIntoView({ block: 'start' });
+      }
+      return;
+    }
     panel.innerHTML = panelHTML(q);
     const ed = $('#editor');
     ed.value = draftFor(q);
@@ -633,7 +684,7 @@ function startApp(QUIZ) {
     if (cmp.ok) {
       markSolved(q);
       const viewed = state.status[q.id] === 'revealed';
-      setOut(banner('ok', 'Correct', plural(res.rows.length, 'row') + ' match the expected result.' + (viewed ? ' (Not counted as solved because you viewed the solution.)' : ' Marked as solved.')) + shown);
+      setOut(banner('ok', 'Correct', plural(res.rows.length, 'row') + ' match the expected result.' + (viewed ? ' (Not counted as solved because you viewed the solution.)' : ' Marked as solved.')) + flagHTML(q) + shown);
     } else {
       setOut(banner('bad', 'Not yet', cmp.message) + shown);
     }
@@ -809,8 +860,9 @@ function startApp(QUIZ) {
       const typesOk = !tc.error && !tc.result.errors.length && !tc.result.signature;
       const passed = res.results.filter(r => r.pass).length;
       const all = passed === q.tests.length;
+      const won = all && (typesOk || !!tc.error);
       let head;
-      if (all && (typesOk || tc.error)) {
+      if (won) {
         markSolved(q);
         const viewed = state.status[q.id] === 'revealed';
         head = banner('ok', 'All ' + q.tests.length + ' tests passed' + (typesOk ? ', types check' : ''), viewed ? 'Not counted as solved because you viewed the solution.' : 'Marked as solved.');
@@ -830,7 +882,7 @@ function startApp(QUIZ) {
         if (r.error) inner += '<div class="err">' + esc(r.error) + '</div>';
         return '<li class="test"><span class="pill ' + (r.pass ? 'pass' : 'fail') + '">' + (r.pass ? 'Pass' : 'Fail') + '</span><div>' + inner + '</div></li>';
       }).join('');
-      setOut(head + '<ul class="tests">' + typeCheckItem(tc) + items + '</ul>');
+      setOut(head + (won ? flagHTML(q) : '') + '<ul class="tests">' + typeCheckItem(tc) + items + '</ul>');
     } finally {
       running = false;
       const b = $('[data-action="tests"]');
@@ -922,6 +974,28 @@ function startApp(QUIZ) {
     renderPanel(false);
   }
 
+  let unlocking = false;
+  $('#panel').addEventListener('submit', async e => {
+    if (e.target.id !== 'unlock-form') return;
+    e.preventDefault();
+    const q = byId(state.current);
+    const input = $('#keyword'), msg = $('#unlock-msg'), btn = e.target.querySelector('[type="submit"]');
+    if (!q || !q.locked || unlocking) return;
+    if (!CTF.normKeyword(input.value)) { msg.innerHTML = banner('bad', 'Empty', 'Type the keyword first.'); return; }
+    unlocking = true; btn.disabled = true;
+    msg.innerHTML = banner('', 'Checking', 'Trying that keyword…');
+    try {
+      const result = await unlock(q, input.value);
+      if (result === 'ok') { go(q.id, true); return; }
+      msg.innerHTML = result === 'wrong'
+        ? banner('bad', 'Wrong keyword', 'That is not it. Keywords ignore upper and lower case.')
+        : banner('bad', 'Broken question', QUIZ.problems[QUIZ.problems.length - 1] || 'This question could not be read.');
+      input.select();
+    } finally {
+      unlocking = false; btn.disabled = false;
+    }
+  });
+
   let tabEscape = false;
   $('#panel').addEventListener('input', e => {
     if (e.target.id === 'editor') { state.drafts[state.current] = e.target.value; save(); syncHL(); }
@@ -949,10 +1023,12 @@ function startApp(QUIZ) {
   $('#reset-all').addEventListener('click', e => {
     const b = e.currentTarget;
     if (!ui.resetArmed) { ui.resetArmed = true; b.classList.add('armed'); b.textContent = 'Click again to erase all progress and drafts'; return; }
-    ui.resetArmed = false; b.classList.remove('armed'); b.textContent = 'Reset progress';
-    state.status = {}; state.drafts = {};
-    ui.outputs = {}; ui.hint = {}; ui.reveal = {}; ui.armed = {};
-    save(); renderNav(); renderProgress(); renderPanel(false);
+    // Also forget the keywords, then reload so every question locks again.
+    state.status = {}; state.drafts = {}; state.keys = {}; state.captured = {};
+    state.current = 'welcome'; state.last = null;
+    save();
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (err) { /* ignore */ }
+    location.reload();
   });
 
   // ---------- boot ----------
@@ -963,7 +1039,7 @@ function startApp(QUIZ) {
     w.innerHTML = '<strong>Data files</strong><span>' + QUIZ.problems.map(esc).join('<br>') + '</span>';
     $('#alerts').appendChild(w);
   }
-  if (!QUESTIONS.length) { $('#panel').innerHTML = '<p>No questions yet. Add some to questions.json.</p>'; return; }
+  if (!QUESTIONS.length) { $('#panel').innerHTML = '<p>No questions yet. Add some to questions.src.json and run node build.js.</p>'; return; }
   // A link such as page.html#tutorial or page.html#sql-pricey-books opens that page directly.
   const fromHash = decodeURIComponent(location.hash.slice(1));
   if (byId(fromHash) || PAGES[fromHash]) state.current = fromHash;
@@ -998,8 +1074,26 @@ function hideLoading() {
   el.classList.add('done');
   setTimeout(() => el.remove(), 250);
 }
-Promise.all([loadJSON(QUESTIONS_URL), loadJSON(SCHEMA_URL), pageLoaded, fontsLoaded])
-  .then(([list, schema]) => startApp(buildQuiz(list, schema)))
+function readStore() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; }
+}
+// Decrypt every question we have a keyword for. The first one needs no keyword.
+function openChain(bundle) {
+  if (!bundle || !Array.isArray(bundle.questions)) {
+    throw new Error(QUESTIONS_URL + ' is not a built quiz. Run "node build.js" to make it from questions.src.json.');
+  }
+  if (!CTF.available()) {
+    throw new Error('This page needs https:// or http://localhost to unlock the questions.');
+  }
+  const keys = readStore().keys || {};
+  return Promise.all(bundle.questions.map(async (box, i) => {
+    const keyword = i === 0 ? '' : keys[box.id];
+    const raw = keyword == null ? null : await CTF.open(box, keyword);
+    return { id: box.id, track: box.track, box, raw };
+  }));
+}
+Promise.all([loadJSON(QUESTIONS_URL).then(openChain), loadJSON(SCHEMA_URL), pageLoaded, fontsLoaded])
+  .then(([entries, schema]) => startApp(buildQuiz(entries, schema)))
   .catch(e => {
     const msg = location.protocol === 'file:'
       ? 'Could not load ' + QUESTIONS_URL + ' and ' + SCHEMA_URL + '. Browsers block this for pages opened from disk, so serve the folder with a web server.'

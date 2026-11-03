@@ -150,3 +150,6 @@ vite.config.ts.timestamp-*
 
 # Local backup of the original single-file quiz
 Select & Return.backup.html
+
+# CTF source: holds the keywords and answers. Only the encrypted questions.json is published.
+questions.src.json

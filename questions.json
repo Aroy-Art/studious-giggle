@@ -1,61 +1,21 @@
-[
-  {
-    "type": "sql",
-    "title": "Pricey books",
-    "level": "Easy",
-    "prompt": [
-      "List the <code>title</code> and <code>price</code> of every book that costs more than 15.00.",
-      "Show the most expensive first, and break ties by title A to Z."
-    ],
-    "hint": "WHERE filters rows. ORDER BY takes several columns, and each one gets its own ASC or DESC.",
-    "solution": [
-      "SELECT title, price",
-      "FROM books",
-      "WHERE price > 15",
-      "ORDER BY price DESC, title"
-    ]
-  },
-  {
-    "type": "ts",
-    "title": "Top scorers",
-    "level": "Easy",
-    "prompt": [
-      "Return the names of players whose <code>score</code> is at least <code>minScore</code>.",
-      "Highest score first. Players with the same score are ordered by name A to Z. Do not modify the input array."
-    ],
-    "hint": "filter, then sort. Array.prototype.sort changes the array it is called on, so sort the result of filter, not the original.",
-    "starter": [
-      "interface Player {",
-      "  name: string;",
-      "  score: number;",
-      "}",
-      "",
-      "function topScorers(players: Player[], minScore: number): string[] {",
-      "  // your code here",
-      "  return [];",
-      "}"
-    ],
-    "solution": [
-      "interface Player {",
-      "  name: string;",
-      "  score: number;",
-      "}",
-      "",
-      "function topScorers(players: Player[], minScore: number): string[] {",
-      "  return players",
-      "    .filter(p => p.score >= minScore)",
-      "    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))",
-      "    .map(p => p.name);",
-      "}"
-    ],
-    "examples": [
-      { "call": "topScorers([{name:'Kai',score:40},{name:'Lu',score:90}], 30)", "returns": "['Lu','Kai']" }
-    ],
-    "tests": [
-      { "label": "mixed scores", "call": "fn([{name:'Ana',score:50},{name:'Bo',score:70},{name:'Cy',score:70}], 50)", "expected": "['Bo','Cy','Ana']" },
-      { "label": "empty list", "call": "fn([], 10)", "expected": "[]", "hidden": true },
-      { "label": "a score equal to the cut-off is included", "call": "fn([{name:'Mo',score:9},{name:'Al',score:9}], 9)", "expected": "['Al','Mo']", "hidden": true },
-      { "label": "input array is left unchanged", "call": "(() => { const p = [{name:'B',score:1},{name:'A',score:2}]; const before = JSON.stringify(p); fn(p, 0); return JSON.stringify(p) === before; })()", "expected": "true", "hidden": true }
-    ]
-  }
-]
+{
+  "ctf": 1,
+  "questions": [
+    {
+      "id": "sql-2489ce8b",
+      "track": "sql",
+      "salt": "CVhRcNDvQQmttN3bsLrPyw==",
+      "iv": "h8FkgQwKKF4YBSQn",
+      "iterations": 100000,
+      "data": "XlxI12BnQuO5vvpf36P6SbGAm4hzlJR+y+ckM9RluWqvaBdkCvKarc40JuMoFlo9wTmKBAwJoy5sYvl4MHo6AmE3MZDmx0QE9MqF3EIXfLQ7Yu5YneavzqLTCZQSjGPH2YdnhD6vYMwBdD3BQ9S00BfXlCrNmAsp/1clR4K94ViSCJR/sDTavJreRzgoRVydDKoeSnCOQjUuTht+LsggDdrQ8TOrHA1z2bpOxdpIKAfHYgSwxzkl+F7CCDNdZ5i/c/0/TPumKuYaYmFJZDOlBq1pGPCUp8nrFRTSRR45uttZO8iAY5T3BOScHRz5BQ88d5ojsuS7XtanXQxIHQjG4WvTVQzow0wR4lXcBTwg6LPYDhSKiKOuCPnJiC86h+bRcVGfzY1ppazI/rDK9BHti+LETGe5ttm24IiSjdfb4xdztbkSrcpDCHGkWtjsx1wNI7guoKIaCbScbfvP4brzYhiIz23eDYGNQtDMGtFJiZE63gqgJBsAMaIAnN+HHkjEbQgOdr5IJg9VB3Ro2BWOc1QvmQzUL8MugK0voKFuxtnixkx28T8YPuB2qn4RZ8A5WsqE51gn+EasbHt5Csc7e1ekI49K/IGzw+KS"
+    },
+    {
+      "id": "ts-47497ba5",
+      "track": "ts",
+      "salt": "GFIptHogLqNwYS+Nu5UuWA==",
+      "iv": "IoZdEFoRN+qT5n4T",
+      "iterations": 100000,
+      "data": "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"
+    }
+  ]
+}

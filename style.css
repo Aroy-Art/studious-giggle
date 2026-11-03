@@ -209,6 +209,8 @@ kbd { font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--li
 .nav-item.is-solved .st { background: var(--ok); border-color: var(--ok); }
 .nav-item.is-revealed .st { background: var(--warn); border-color: var(--warn); }
 .nav-item.is-solved .n { color: var(--ok); }
+.nav-item.is-locked .t { color: var(--faint); font-style: italic; }
+.nav-item.is-locked .st { border-style: dashed; }
 
 /* ---------- rail footer ---------- */
 .rail-foot { margin-top: auto; display: grid; gap: 10px; font-size: 12.5px; color: var(--muted); }
@@ -300,6 +302,24 @@ details.expected .tablewrap { margin-top: 10px; }
 .note.hint strong { color: var(--accent); }
 .sol-head { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .sol-head .label { margin: 0; }
+
+/* capture the flag: keyword reveal + locked questions */
+.flag { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center; justify-content: space-between; padding: 14px 16px; border-radius: 12px; background: var(--accent-tint); border: 1px dashed var(--accent); }
+.flag-text { display: grid; gap: 8px; min-width: 0; }
+.flag-label { font: 600 11px/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; color: var(--accent); }
+.flag-word { font-size: 18px; font-weight: 600; padding: 4px 10px; justify-self: start; overflow-wrap: anywhere; user-select: all; }
+.flag.final { background: var(--ok-bg); border-color: var(--ok); }
+.flag.final .flag-label { color: var(--ok); }
+.locked { max-width: 640px; display: grid; gap: 26px; }
+.unlock { display: grid; gap: 4px; }
+.unlock .out { padding: 8px 0 0; max-height: none; }
+.unlock-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.unlock-input {
+  flex: 1 1 220px; min-width: 0; height: 40px; padding: 0 12px; border-radius: 10px;
+  border: 1px solid var(--line-strong); background: var(--sunken); color: var(--fg);
+  font: 500 15px/1 var(--font-mono);
+}
+.unlock-input:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--accent); }
 pre { margin: 0; font: 13.5px/1.65 var(--font-mono); background: var(--sunken); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; overflow: auto; max-width: 100%; }
 pre code, .editor-hl code { font: inherit; background: none; border: 0; padding: 0; }
 

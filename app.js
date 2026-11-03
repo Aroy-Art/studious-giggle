@@ -406,7 +406,7 @@ function startApp(QUIZ) {
     const head = def.cols.map(c => '<th scope="col"' + (c[1] === 'STRING' ? '' : ' class="num"') + '>' + esc(c[0]) + '<span class="ty">' + (TYPE_LABEL[c[1]] || c[1]) + '</span></th>').join('');
     const body = def.rows.map(r => '<tr>' + def.cols.map(c => {
       const v = r[c[0]];
-      return typeof v === 'number' ? '<td class="num">' + v + '</td>' : '<td>' + esc(v) + '</td>';
+      return v == null ? '<td class="null">NULL</td>' : typeof v === 'number' ? '<td class="num">' + v + '</td>' : '<td>' + esc(v) + '</td>';
     }).join('') + '</tr>').join('');
     return '<div class="tablewrap" tabindex="0"><table><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div><p class="meta">' + name + ' · ' + def.rows.length + ' rows</p>';
   }
@@ -584,7 +584,7 @@ function startApp(QUIZ) {
       const pct = Math.round((done / list.length) * 100);
       const levels = [...new Set(list.map(q => q.level).filter(Boolean))].join(' · ');
       const blurb = track === 'sql'
-        ? 'Query a small bookshop database: authors, books, customers and orders.'
+        ? 'Query a small bookshop database, plus a cast of characters from over the garden wall.'
         : 'Write small functions, checked by visible and hidden tests.';
       return '<div class="card card-box"><span class="card-num" aria-hidden="true">' + pad(list.length) + '</span>' +
         '<div class="eyebrow"><span class="track">' + (track === 'sql' ? 'SQL' : 'TS') + '</span><span>' + plural(list.length, 'question') + '</span></div>' +

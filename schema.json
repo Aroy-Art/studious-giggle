@@ -122,5 +122,27 @@
       [14, 7, 2],
       [14, 6, 1]
     ]
+  },
+  "characters": {
+    "columns": [
+      { "name": "id", "type": "INT" },
+      { "name": "name", "type": "STRING" },
+      { "name": "kind", "type": "STRING" },
+      { "name": "scariness", "type": "INT" },
+      { "name": "frogs_owned", "type": "INT" },
+      { "name": "friend", "type": "STRING" }
+    ],
+    "rows": [
+      [1, "Wirt", "human", 2, 2, "Greg"],
+      [2, "Greg", "human", 1, 5, "his frog"],
+      [3, "Beatrice", "bluebird", 3, 0, "Wirt"],
+      [4, "Enoch", "human", 6, 0, null],
+      [5, "The Beast", "spirit", 10, 0, null],
+      [6, "Lorna", "human", 7, 1, null],
+      [7, "Auntie Whispers", "witch", 8, 3, null],
+      [8, "Quincy Endicott", "human", 2, 0, null],
+      [9, "Fred the Horse", "horse", 1, 0, null],
+      [10, "Miss Langtree", "human", 4, 0, null]
+    ]
   }
 }

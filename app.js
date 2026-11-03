@@ -57,6 +57,8 @@ function buildQuiz(entries, schemaJson) {
     if (raw.type === 'sql') {
       q.solution = dedent(raw.solution);
       q.ordered = raw.ordered !== false;
+      // Optional: a SELECT that reads the data back after an INSERT / UPDATE / DELETE question.
+      q.check = raw.check ? dedent(raw.check) : '';
       if (raw.starter != null) q.starter = dedent(raw.starter) + '\n';
     } else {
       if (!raw.starter) return missing('starter');
@@ -95,24 +97,55 @@ const ENGINE = (() => {
     const name = 'quiz' + (++dbCounter);
     const db = new alasql.Database(name);
     for (const [table, def] of Object.entries(schema)) {
-      db.exec('CREATE TABLE ' + table + ' (' + def.cols.map(c => c[0] + ' ' + c[1]).join(', ') + ')');
+      db.exec('CREATE TABLE ' + table + ' (' + def.cols.map(c => '`' + c[0] + '`' + ' ' + c[1]).join(', ') + ')');
       db.exec('INSERT INTO ' + table + ' SELECT * FROM ?', [def.rows.map(r => ({ ...r }))]);
     }
     return { db, dispose() { try { delete alasql.databases[name]; } catch (e) { /* ignore */ } } };
   }
 
-  // Returns { ok, rows, cols, error }. Only a single SELECT statement is allowed.
-  function runSQL(alasql, schema, sql) {
+  // Column names that AlaSQL reads as keywords (e.g. total). They only work quoted, so
+  // queries get them quoted automatically and learners can write plain SQL.
+  const reservedCache = new WeakMap();
+  function reservedCols(alasql, schema) {
+    if (!reservedCache.has(schema)) {
+      const names = new Set();
+      for (const def of Object.values(schema)) {
+        for (const [c] of def.cols) {
+          try { alasql.parse('SELECT ' + c + ' FROM t'); } catch (e) { names.add(c.toLowerCase()); }
+        }
+      }
+      reservedCache.set(schema, names);
+    }
+    return reservedCache.get(schema);
+  }
+  function quoteReserved(sql, names) {
+    if (!names.size) return sql;
+    const word = new RegExp('\\b(' + [...names].join('|') + ')\\b', 'gi');
+    // Odd parts are string literals or already-quoted names; leave those alone.
+    return sql.split(/('(?:[^']|'')*'|"[^"]*"|`[^`]*`|\[[^\]]*\])/)
+      .map((part, i) => (i % 2 ? part : part.replace(word, '`$1`'))).join('');
+  }
+
+  // Returns { ok, rows, cols, error, wrote, changed }. One statement per run, normally a SELECT.
+  // With a `check` query, INSERT / UPDATE / DELETE are allowed too: the statement runs, then
+  // `check` reads the table back, and its rows are the result.
+  function runSQL(alasql, schema, sql, check) {
     const cleaned = sql.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '').trim().replace(/;+\s*$/, '');
     if (!cleaned) return { ok: false, error: 'Write a query first.' };
     if (cleaned.includes(';')) return { ok: false, error: 'Run one statement at a time.' };
-    if (!/^select\b/i.test(cleaned)) return { ok: false, error: 'Only SELECT queries are allowed in this quiz.' };
+    const wrote = !!check && /^(insert|update|delete)\b/i.test(cleaned);
+    if (!wrote && !/^select\b/i.test(cleaned)) {
+      return { ok: false, error: check ? 'Only SELECT, INSERT, UPDATE and DELETE are allowed here.' : 'Only SELECT queries are allowed in this question.' };
+    }
     const handle = makeDB(alasql, schema);
+    const reserved = reservedCols(alasql, schema);
     try {
-      const rows = handle.db.exec(cleaned);
+      let rows = handle.db.exec(quoteReserved(cleaned, reserved));
+      const changed = wrote ? (typeof rows === 'number' ? rows : 0) : null;
+      if (wrote) rows = handle.db.exec(quoteReserved(check, reserved));
       if (!Array.isArray(rows)) return { ok: false, error: 'The query did not return rows.' };
       const cols = rows.length ? Object.keys(rows[0]) : [];
-      return { ok: true, rows, cols };
+      return { ok: true, rows, cols, wrote, changed };
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).split('\n')[0] };
     } finally {
@@ -121,7 +154,8 @@ const ENGINE = (() => {
   }
 
   const normCell = v => (typeof v === 'number' ? Math.round(v * 100) / 100 : v == null ? null : typeof v === 'string' ? v : String(v));
-  const toMatrix = rows => rows.map(r => Object.values(r).map(normCell));
+  // Read values by column name, so rows with missing keys (inserted NULLs) still line up.
+  const toMatrix = (rows, cols) => rows.map(r => cols.map(c => normCell(r[c])));
   const key = row => JSON.stringify(row);
 
   // Compare a learner result with the expected result. Column names are ignored, positions matter.
@@ -135,7 +169,7 @@ const ENGINE = (() => {
     if (got.cols.length !== want.cols.length) {
       return { ok: false, message: 'Expected ' + want.cols.length + ' column' + (want.cols.length === 1 ? '' : 's') + ' (' + want.cols.join(', ') + '), got ' + got.cols.length + '.' };
     }
-    const a = toMatrix(got.rows), b = toMatrix(want.rows);
+    const a = toMatrix(got.rows, got.cols), b = toMatrix(want.rows, want.cols);
     if (a.length !== b.length) {
       return { ok: false, message: 'Expected ' + b.length + ' row' + (b.length === 1 ? '' : 's') + ', got ' + a.length + '.' };
     }
@@ -376,11 +410,12 @@ function startApp(QUIZ) {
     }).join('') + '</tr>').join('');
     return '<div class="tablewrap" tabindex="0"><table><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div><p class="meta">' + name + ' · ' + def.rows.length + ' rows</p>';
   }
-  const banner = (kind, label, text) => '<div class="banner ' + kind + '"><strong>' + esc(label) + '</strong><span>' + esc(text) + '</span></div>';
+  const bannerHTML = (kind, label, html) => '<div class="banner ' + kind + '"><strong>' + esc(label) + '</strong><span>' + html + '</span></div>';
+  const banner = (kind, label, text) => bannerHTML(kind, label, esc(text));
   const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
 
   function expectedFor(q) {
-    if (!ui.expected[q.id]) ui.expected[q.id] = ENGINE.runSQL(alasql, QUIZ.SCHEMA, q.solution);
+    if (!ui.expected[q.id]) ui.expected[q.id] = ENGINE.runSQL(alasql, QUIZ.SCHEMA, q.solution, q.check);
     return ui.expected[q.id];
   }
 
@@ -451,7 +486,8 @@ function startApp(QUIZ) {
     if (isSql) {
       const exp = expectedFor(q);
       if (exp.ok) {
-        brief += '<div class="section"><div class="label"><span>Target</span></div><p class="target">' + plural(exp.cols.length, 'column') + ' (<code>' + exp.cols.map(esc).join('</code>, <code>') + '</code>) and ' + plural(exp.rows.length, 'row') + '.</p>' +
+        brief += '<div class="section"><div class="label"><span>Target</span></div><p class="target">' +
+          (q.check ? 'After your statement, <code>' + esc(q.check) + '</code> returns ' : '') + plural(exp.cols.length, 'column') + ' (<code>' + exp.cols.map(esc).join('</code>, <code>') + '</code>) and ' + plural(exp.rows.length, 'row') + '.</p>' +
           '<details class="expected"><summary>Show the expected result</summary>' + tableHTML(exp.cols, exp.rows) + '</details></div>';
       }
       const tables = Object.keys(QUIZ.SCHEMA);
@@ -674,13 +710,20 @@ function startApp(QUIZ) {
       return;
     }
     const t0 = performance.now();
-    const res = ENGINE.runSQL(alasql, QUIZ.SCHEMA, sql);
+    const res = ENGINE.runSQL(alasql, QUIZ.SCHEMA, sql, q.check);
     const ms = Math.max(1, Math.round(performance.now() - t0));
     if (!res.ok) { setOut(banner('bad', 'Error', res.error)); return; }
     const shown = res.rows.length ? tableHTML(res.cols, res.rows) : '';
-    const count = plural(res.rows.length, 'row') + ' · ' + ms + ' ms';
+    // Writes show the table read back by the question's check query. Every run starts from fresh data.
+    const count = res.wrote
+      ? plural(res.changed, 'row') + ' changed. <code>' + esc(q.check) + '</code> now returns ' + plural(res.rows.length, 'row') + ' · ' + ms + ' ms'
+      : plural(res.rows.length, 'row') + ' · ' + ms + ' ms';
     if (!submit) {
-      setOut(banner('', 'Result', count + '. Submit when it looks right.') + shown);
+      setOut(bannerHTML('', 'Result', count + '. Submit when it looks right.') + shown);
+      return;
+    }
+    if (q.check && !res.wrote) {
+      setOut(banner('bad', 'Not yet', 'This question asks you to change the data. Use INSERT, UPDATE or DELETE.') + shown);
       return;
     }
     const exp = expectedFor(q);

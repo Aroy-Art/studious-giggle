@@ -68,24 +68,25 @@
     "columns": [
       { "name": "id", "type": "INT" },
       { "name": "customer_id", "type": "INT" },
+      { "name": "total", "type": "NUMBER" },
       { "name": "order_date", "type": "STRING" },
       { "name": "status", "type": "STRING" }
     ],
     "rows": [
-      [1, 1, "2025-01-12", "completed"],
-      [2, 2, "2025-01-20", "completed"],
-      [3, 1, "2025-02-03", "completed"],
-      [4, 3, "2025-02-14", "cancelled"],
-      [5, 4, "2025-02-27", "completed"],
-      [6, 5, "2025-03-05", "completed"],
-      [7, 2, "2025-03-18", "completed"],
-      [8, 7, "2025-03-29", "pending"],
-      [9, 3, "2025-04-02", "completed"],
-      [10, 1, "2025-04-16", "completed"],
-      [11, 4, "2025-05-09", "completed"],
-      [12, 5, "2025-05-21", "cancelled"],
-      [13, 3, "2025-06-11", "completed"],
-      [14, 2, "2025-06-25", "completed"]
+      [1, 1, 40.5, "2025-01-12", "completed"],
+      [2, 2, 63.8, "2025-01-20", "completed"],
+      [3, 1, 29.5, "2025-02-03", "completed"],
+      [4, 3, 29.95, "2025-02-14", "cancelled"],
+      [5, 4, 38.5, "2025-02-27", "completed"],
+      [6, 5, 38.75, "2025-03-05", "completed"],
+      [7, 2, 54.48, "2025-03-18", "completed"],
+      [8, 7, 26.5, "2025-03-29", "pending"],
+      [9, 3, 46.5, "2025-04-02", "completed"],
+      [10, 1, 25.25, "2025-04-16", "completed"],
+      [11, 4, 49.9, "2025-05-09", "completed"],
+      [12, 5, 22.4, "2025-05-21", "cancelled"],
+      [13, 3, 49.5, "2025-06-11", "completed"],
+      [14, 2, 47, "2025-06-25", "completed"]
     ]
   },
   "order_items": {

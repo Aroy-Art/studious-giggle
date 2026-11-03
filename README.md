@@ -106,6 +106,8 @@ Something wrong? A **red banner** on the page tells you what.
 | `hint` | Text shown by the Hint button |
 | `id` | Keeps saved progress if you rename the question |
 | `ordered` | SQL only. Set `false` if row order doesn't matter |
+| `check` | SQL only. Lets the learner run `INSERT` / `UPDATE` / `DELETE`; this `SELECT` reads the data back afterwards and is compared with what the solution leaves, e.g. `"SELECT name, city FROM customers"` |
+| `fnName` | TS only. The function to test, when the starter's first `function` name isn't it (e.g. a blank like `first___`) |
 | `label` | Test name. Defaults to the `call` |
 | `examples` | TS only. Example calls shown on the question page |
 
@@ -120,3 +122,5 @@ Something wrong? A **red banner** on the page tells you what.
 They're in `schema.json`. Each table has `columns` (with a `name` and a `type` of `INT` / `NUMBER` / `STRING`) and `rows` (one array per row).
 
 > ⚠ Changing the data changes every SQL answer.
+
+`orders.total` is the sum of the order's `order_items` (`qty` × book `price`). Column names that AlaSQL treats as keywords, like `total`, are quoted automatically, so plain SQL works.

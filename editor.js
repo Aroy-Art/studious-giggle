@@ -233,7 +233,7 @@ const $ = s => document.querySelector(s);
 let qs = [], sel = 0, dirty = false, saving = false, armedDelete = false;
 
 // Keys are written in this order; anything else the file has is kept after them.
-const ORDER = ['type', 'id', 'title', 'level', 'keyword', 'viewedFlag', 'prompt', 'hint', 'ordered', 'fnName', 'starter', 'solution', 'examples', 'tests'];
+const ORDER = ['type', 'id', 'title', 'level', 'keyword', 'viewedFlag', 'prompt', 'hint', 'ordered', 'fnName', 'starter', 'solution', 'check', 'examples', 'tests'];
 function tidy(q) {
   const out = {};
   for (const k of ORDER) if (q[k] !== undefined) out[k] = q[k];
@@ -402,6 +402,7 @@ function render() {
   } else {
     form.append(field('Solution', 'the expected result is computed from this', area(q, 'solution', { rows: 6, lines: true })));
     form.append(field('Starter', 'optional', area(q, 'starter', { rows: 3, lines: true })));
+    form.append(field('Check query', 'optional; set it for INSERT / UPDATE / DELETE questions, e.g. SELECT name, city FROM customers', area(q, 'check', { rows: 2 })));
     const ordered = el('input', { type: 'checkbox', checked: q.ordered !== false, onchange: e => { q.ordered = e.target.checked ? undefined : false; changed(); } });
     form.append(el('label', { className: 'check' }, [ordered, 'Row order matters (uncheck if any order is fine)']));
   }

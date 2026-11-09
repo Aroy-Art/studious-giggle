@@ -1169,6 +1169,7 @@ function openChain(bundle) {
 Promise.all([loadJSON(QUESTIONS_URL).then(openChain), loadJSON(SCHEMA_URL), pageLoaded, fontsLoaded])
   .then(([entries, schema]) => startApp(buildQuiz(entries, schema)))
   .catch(e => {
+    if (typeof Sentry !== 'undefined') Sentry.captureException(e);
     const msg = location.protocol === 'file:'
       ? 'Could not load ' + QUESTIONS_URL + ' and ' + SCHEMA_URL + '. Browsers block this for pages opened from disk, so serve the folder with a web server.'
       : String(e.message || e);

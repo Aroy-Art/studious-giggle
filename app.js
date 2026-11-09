@@ -327,7 +327,14 @@ function startApp(QUIZ) {
 
   const draftFor = q => (state.drafts[q.id] != null ? state.drafts[q.id] : q.starter || SQL_STARTER);
 
+  // Count a player action in Sentry metrics, tagged with the question it happened on.
+  function count(name, q, extra) {
+    if (typeof Sentry === 'undefined' || !Sentry.metrics) return;
+    Sentry.metrics.count(name, 1, { attributes: Object.assign({ question: q.id, track: q.track }, extra) });
+  }
+
   function markSolved(q) {
+    if (!state.captured[q.id]) count('quiz.question.solved', q, { viewed: state.status[q.id] === 'revealed' });
     if (state.status[q.id] !== 'revealed') state.status[q.id] = 'solved';
     state.captured[q.id] = true;
     save(); renderNav(); renderProgress();
@@ -940,7 +947,7 @@ function startApp(QUIZ) {
   // ---------- events ----------
   function go(id, focusTitle) {
     state.current = id;
-    if (byId(id)) state.last = id;
+    if (byId(id)) { state.last = id; count('quiz.question.opened', byId(id), { locked: !!byId(id).locked }); }
     try { history.replaceState(null, '', '#' + encodeURIComponent(id)); } catch (e) { /* ignore */ }
     save();
     renderNav();
@@ -984,6 +991,7 @@ function startApp(QUIZ) {
         ui.hint[q.id] = !ui.hint[q.id];
         // Pulse the hint box once when it opens, so it's easy to spot in the left column.
         ui.hintFlash = ui.hint[q.id] ? q.id : null;
+        if (ui.hint[q.id]) count('quiz.hint.opened', q);
         keepEditor(q);
         ui.hintFlash = null;
         const box = $('#hint-box');
@@ -994,6 +1002,7 @@ function startApp(QUIZ) {
         if (ui.reveal[q.id]) { ui.reveal[q.id] = false; ui.armed[q.id] = false; }
         else if (ui.armed[q.id]) {
           ui.reveal[q.id] = true;
+          count('quiz.solution.viewed', q, { solved: state.status[q.id] === 'solved' });
           state.viewedAny = true;
           if (state.status[q.id] !== 'solved') state.status[q.id] = 'revealed';
           save(); renderNav(); renderProgress();
